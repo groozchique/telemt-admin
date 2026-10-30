@@ -1,7 +1,8 @@
 //! Генерация fake-TLS и WEB-ссылок на прокси telemt.
 
-use crate::config::WebSecretMode;
+use crate::config::{WebLinkScheme, WebSecretMode};
 use crate::telemt_cfg::TelemtLinkParams;
+use base64::Engine;
 use rand::RngCore;
 use std::fmt::Write;
 
@@ -57,13 +58,46 @@ pub fn extract_user_secret(proxy_link: &str) -> Option<String> {
     Some(secret.to_string())
 }
 
-/// Формирует ссылку `tg://webproxy` для WEB-прокси telemt (порт всегда 443).
-pub fn build_web_proxy_link(host: &str, user_secret: &str, mode: WebSecretMode) -> String {
-    let prefix = match mode {
-        WebSecretMode::Dd => "dd",
-        WebSecretMode::Plain => "",
+/// Маркер path-секрета WEB-ссылки telemt (`0x70 || client_secret`).
+const WEB_PATH_SECRET_MARKER: u8 = 0x70;
+
+/// Формирует WEB-ссылку для WEB-прокси telemt (порт всегда 443).
+///
+/// Без `base_path` — root-ссылка с hex-секретом (`dd` + secret или secret). С `base_path` —
+/// path-ссылка telemt: `server` = percent-encoded `HOST/BASE`, `secret` = base64url без padding
+/// от `0x70 || client_secret`, где `client_secret` = `0xdd || secret` (`dd`) или `secret` (`plain`).
+/// `None`, если секрет не hex (для path-ссылки нужны байты секрета).
+pub fn build_web_proxy_link(
+    host: &str,
+    base_path: Option<&str>,
+    user_secret: &str,
+    mode: WebSecretMode,
+    scheme: WebLinkScheme,
+) -> Option<String> {
+    let prefix = match scheme {
+        WebLinkScheme::Tg => "tg://webproxy",
+        WebLinkScheme::Https => "https://t.me/webproxy",
     };
-    format!("tg://webproxy?server={host}&secret={prefix}{user_secret}")
+    let Some(base_path) = base_path else {
+        let secret_prefix = match mode {
+            WebSecretMode::Dd => "dd",
+            WebSecretMode::Plain => "",
+        };
+        return Some(format!(
+            "{prefix}?server={host}&secret={secret_prefix}{user_secret}"
+        ));
+    };
+    let decoded = hex::decode(user_secret).ok()?;
+    let mut marked = Vec::with_capacity(decoded.len() + 2);
+    marked.push(WEB_PATH_SECRET_MARKER);
+    if mode == WebSecretMode::Dd {
+        marked.push(0xdd);
+    }
+    marked.extend_from_slice(&decoded);
+    let server: String =
+        form_urlencoded::byte_serialize(format!("{host}/{base_path}").as_bytes()).collect();
+    let secret = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(marked);
+    Some(format!("{prefix}?server={server}&secret={secret}"))
 }
 
 #[cfg(test)]
@@ -72,7 +106,7 @@ mod tests {
         build_fake_tls_secret, build_proxy_link, build_web_proxy_link, extract_user_secret,
         generate_user_secret,
     };
-    use crate::config::WebSecretMode;
+    use crate::config::{WebLinkScheme, WebSecretMode};
     use crate::telemt_cfg::TelemtLinkParams;
 
     const SECRET: &str = "0123456789abcdef0123456789abcdef";
@@ -133,16 +167,109 @@ mod tests {
     #[test]
     fn build_web_proxy_link_uses_dd_secret_by_default_mode() {
         assert_eq!(
-            build_web_proxy_link("lk.example.com", SECRET, WebSecretMode::Dd),
-            format!("tg://webproxy?server=lk.example.com&secret=dd{SECRET}")
+            build_web_proxy_link(
+                "lk.example.com",
+                None,
+                SECRET,
+                WebSecretMode::Dd,
+                WebLinkScheme::Tg
+            )
+            .as_deref(),
+            Some(format!("tg://webproxy?server=lk.example.com&secret=dd{SECRET}").as_str())
         );
     }
 
     #[test]
     fn build_web_proxy_link_supports_plain_secret() {
         assert_eq!(
-            build_web_proxy_link("lk.example.com", SECRET, WebSecretMode::Plain),
-            format!("tg://webproxy?server=lk.example.com&secret={SECRET}")
+            build_web_proxy_link(
+                "lk.example.com",
+                None,
+                SECRET,
+                WebSecretMode::Plain,
+                WebLinkScheme::Tg
+            )
+            .as_deref(),
+            Some(format!("tg://webproxy?server=lk.example.com&secret={SECRET}").as_str())
+        );
+    }
+
+    // Векторы из telemt (`src/maestro/helpers/runtime.rs`, docs/WEB/WEB_PROXY.md).
+    const TELEMT_SECRET: &str = "000102030405060708090a0b0c0d0e0f";
+
+    #[test]
+    fn build_web_proxy_link_with_base_path_matches_telemt_dd_vector() {
+        assert_eq!(
+            build_web_proxy_link(
+                "proxy.example.com",
+                Some("dobry-cola/super_app"),
+                TELEMT_SECRET,
+                WebSecretMode::Dd,
+                WebLinkScheme::Tg
+            )
+            .as_deref(),
+            Some(
+                "tg://webproxy?server=proxy.example.com%2Fdobry-cola%2Fsuper_app&secret=cN0AAQIDBAUGBwgJCgsMDQ4P"
+            )
+        );
+    }
+
+    #[test]
+    fn build_web_proxy_link_with_base_path_matches_telemt_plain_vector() {
+        assert_eq!(
+            build_web_proxy_link(
+                "proxy.example.com",
+                Some("telegram/web"),
+                TELEMT_SECRET,
+                WebSecretMode::Plain,
+                WebLinkScheme::Tg
+            )
+            .as_deref(),
+            Some(
+                "tg://webproxy?server=proxy.example.com%2Ftelegram%2Fweb&secret=cAABAgMEBQYHCAkKCwwNDg8"
+            )
+        );
+    }
+
+    #[test]
+    fn build_web_proxy_link_supports_https_scheme() {
+        assert_eq!(
+            build_web_proxy_link(
+                "joy.example.com",
+                Some("chill"),
+                SECRET,
+                WebSecretMode::Dd,
+                WebLinkScheme::Https
+            )
+            .as_deref(),
+            Some(
+                "https://t.me/webproxy?server=joy.example.com%2Fchill&secret=cN0BI0VniavN7wEjRWeJq83v"
+            )
+        );
+        assert_eq!(
+            build_web_proxy_link(
+                "lk.example.com",
+                None,
+                SECRET,
+                WebSecretMode::Dd,
+                WebLinkScheme::Https
+            )
+            .as_deref(),
+            Some(format!("https://t.me/webproxy?server=lk.example.com&secret=dd{SECRET}").as_str())
+        );
+    }
+
+    #[test]
+    fn build_web_proxy_link_with_base_path_rejects_non_hex_secret() {
+        assert_eq!(
+            build_web_proxy_link(
+                "lk.example.com",
+                Some("chill"),
+                "zz",
+                WebSecretMode::Dd,
+                WebLinkScheme::Tg
+            ),
+            None
         );
     }
 

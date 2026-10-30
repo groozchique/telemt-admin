@@ -29,6 +29,13 @@ default_token_days = 14
 max_token_days = 180
 allow_auto_approve_tokens = true
 
+# WEB-прокси telemt (Telegram Desktop 7.1+, тип WEB). Значения должны совпадать с [[web.vhosts]] telemt.
+# [web_proxy]
+# host = "lk.example.com"
+# secret_mode = "dd"        # dd | plain — как secret_mode профиля в [[web.vhosts.profiles]]
+# base_path = "chill"       # [[web.vhosts]].base_path; пусто — root-ссылка
+# link_scheme = "tg"        # tg (tg://webproxy) | https (https://t.me/webproxy)
+
 [bot_messages]
 # При /start без invite-токена можно отдать нейтральный текст-заглушку и не переводить
 # пользователя сразу в wizard ввода токена.

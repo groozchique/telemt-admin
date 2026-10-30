@@ -58,6 +58,8 @@
 - `NOTIFICATIONS__NOTIFY_ON_NEW_REQUEST`
 - `WEB_PROXY__HOST`
 - `WEB_PROXY__SECRET_MODE` (`dd` | `plain`)
+- `WEB_PROXY__BASE_PATH`
+- `WEB_PROXY__LINK_SCHEME` (`tg` | `https`)
 - `WEBAPP__ENABLED`
 - `WEBAPP__LISTEN` (в контейнере — `0.0.0.0:8090` за reverse proxy)
 - `WEBAPP__PUBLIC_URL`

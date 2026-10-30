@@ -177,6 +177,16 @@ pub fn apply(config: &mut Config) -> Result<Vec<String>, anyhow::Error> {
         applied.push("TELEMT_ADMIN__WEB_PROXY__SECRET_MODE".to_string());
     }
 
+    if let Some(v) = read_nonempty("WEB_PROXY__BASE_PATH") {
+        config.web_proxy.base_path = Some(v);
+        applied.push("TELEMT_ADMIN__WEB_PROXY__BASE_PATH".to_string());
+    }
+
+    if let Some(v) = read_nonempty("WEB_PROXY__LINK_SCHEME") {
+        config.web_proxy.link_scheme = parse_web_link_scheme(&v)?;
+        applied.push("TELEMT_ADMIN__WEB_PROXY__LINK_SCHEME".to_string());
+    }
+
     if let Some(v) = read_nonempty("WEBAPP__ENABLED") {
         config.webapp.enabled = parse_bool(&v)?;
         applied.push("TELEMT_ADMIN__WEBAPP__ENABLED".to_string());
@@ -353,6 +363,16 @@ fn parse_web_secret_mode(s: &str) -> Result<crate::config::WebSecretMode, anyhow
     }
 }
 
+fn parse_web_link_scheme(s: &str) -> Result<crate::config::WebLinkScheme, anyhow::Error> {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "tg" => Ok(crate::config::WebLinkScheme::Tg),
+        "https" => Ok(crate::config::WebLinkScheme::Https),
+        _ => Err(anyhow::anyhow!(
+            "TELEMT_ADMIN__WEB_PROXY__LINK_SCHEME: ожидается tg или https"
+        )),
+    }
+}
+
 fn parse_bool(s: &str) -> Result<bool, anyhow::Error> {
     match s.trim().to_lowercase().as_str() {
         "1" | "true" | "yes" | "on" => Ok(true),
@@ -418,6 +438,20 @@ mod tests {
         );
         assert!(super::parse_web_secret_mode("ee").is_err());
         assert!(super::parse_web_secret_mode("").is_err());
+    }
+
+    #[test]
+    fn parse_web_link_scheme_accepts_only_known_values() {
+        assert_eq!(
+            super::parse_web_link_scheme(" TG ").unwrap(),
+            crate::config::WebLinkScheme::Tg
+        );
+        assert_eq!(
+            super::parse_web_link_scheme("https").unwrap(),
+            crate::config::WebLinkScheme::Https
+        );
+        assert!(super::parse_web_link_scheme("http").is_err());
+        assert!(super::parse_web_link_scheme("").is_err());
     }
 
     #[test]

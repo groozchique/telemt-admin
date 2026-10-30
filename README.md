@@ -471,6 +471,8 @@ Deep links для администраторов поддерживают не �
 - `[web_proxy]` — WEB-прокси `telemt` (тип прокси WEB в Telegram Desktop 7.1+, `telemt` 3.5+):
   - `host` — публичный hostname WEB-прокси без схемы, порта и пути, например `lk.example.com`. Если задан, бот добавляет к каждому сообщению со ссылкой блок с `tg://webproxy?server=<host>&secret=<dd>…`; секрет берётся из обычной ссылки пользователя. Пусто — WEB-ссылки не выдаются.
   - `secret_mode` — `dd` (по умолчанию) или `plain`; должен совпадать с `secret_mode` профиля в `[[web.vhosts.profiles]]` `telemt`.
+  - `base_path` — `[[web.vhosts]].base_path` vhost `telemt`, например `chill` или `telegram/web` (без крайних `/`). Если задан, бот выдаёт path-ссылку в формате `telemt`: `server=<host>%2F<base_path>`, секрет — base64url от `0x70 || [0xdd] || secret`. Пусто — root-ссылка с hex-секретом. Некорректное значение отключает WEB-ссылки (предупреждение в логе при старте).
+  - `link_scheme` — вид ссылки: `tg` (по умолчанию, `tg://webproxy?…`) или `https` (`https://t.me/webproxy?…`).
   - Бот **не** создаёт WEB-профили в `telemt`: без профиля у пользователя WEB-ссылка не заработает.
 - `[webapp]` — встроенное веб-приложение Telegram Mini App (ADR 005):
   - `enabled` — запустить HTTP-сервер приложения (default: `false`).
@@ -662,7 +664,7 @@ docker compose logs --tail=100 telemt-admin
   Проверьте `[telemt_api]` и доступность control API `telemt` с машины бота.
 
 - WEB-ссылка не подключается  
-  Бот не создаёт WEB-профили в `telemt`: у пользователя должен быть профиль в `[[web.vhosts.profiles]]` с тем же `secret_mode`, что в `[web_proxy]`, а `[web_proxy] host` должен совпадать с vhost WEB-прокси.
+  Бот не создаёт WEB-профили в `telemt`: у пользователя должен быть профиль в `[[web.vhosts.profiles]]` с тем же `secret_mode`, что в `[web_proxy]`, а `[web_proxy] host` и `base_path` должны совпадать с `host` и `base_path` vhost WEB-прокси.
 
 ## CI/CD
 

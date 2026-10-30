@@ -121,6 +121,18 @@ pub enum WebSecretMode {
     Plain,
 }
 
+/// Вид WEB-ссылки: `tg://webproxy?…` или `https://t.me/webproxy?…`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WebLinkScheme {
+    #[default]
+    Tg,
+    Https,
+}
+
+/// Максимальная длина `base_path` WEB-vhost в telemt (ASCII-байты).
+const WEB_BASE_PATH_MAX_LEN: usize = 128;
+
 /// Настройки выдачи WEB-ссылок. Профили `[[web.vhosts.profiles]]` в telemt бот не создаёт.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct WebProxyConfig {
@@ -130,6 +142,12 @@ pub struct WebProxyConfig {
     /// Формат секрета: `dd` (по умолчанию) или `plain`
     #[serde(default)]
     pub secret_mode: WebSecretMode,
+    /// `[[web.vhosts]].base_path` из telemt; пусто — root-ссылка с hex-секретом
+    #[serde(default)]
+    pub base_path: Option<String>,
+    /// Вид ссылки: `tg` (по умолчанию) или `https`
+    #[serde(default)]
+    pub link_scheme: WebLinkScheme,
 }
 
 impl WebProxyConfig {
@@ -153,6 +171,26 @@ impl WebProxyConfig {
                         .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
             });
         valid.then_some(host)
+    }
+
+    /// Префикс пути без крайних `/`: `Ok(None)` — не задан, `Err(())` — некорректен
+    /// (правила telemt: до 128 байт, сегменты `[A-Za-z0-9][A-Za-z0-9_-]*` через `/`).
+    pub fn normalized_base_path(&self) -> Result<Option<&str>, ()> {
+        let Some(path) = self
+            .base_path
+            .as_deref()
+            .map(|p| p.trim().trim_matches('/'))
+            .filter(|p| !p.is_empty())
+        else {
+            return Ok(None);
+        };
+        let valid = path.len() <= WEB_BASE_PATH_MAX_LEN
+            && path.split('/').all(|segment| {
+                let mut chars = segment.chars();
+                chars.next().is_some_and(|ch| ch.is_ascii_alphanumeric())
+                    && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+            });
+        if valid { Ok(Some(path)) } else { Err(()) }
     }
 }
 
@@ -874,6 +912,12 @@ impl Config {
                 "web_proxy.host `{host}` некорректен (нужен FQDN без схемы, порта и пути): WEB-ссылки выдаваться не будут"
             ));
         }
+        if self.web_proxy.normalized_base_path().is_err() {
+            warnings.push(format!(
+                "web_proxy.base_path `{}` некорректен (сегменты [A-Za-z0-9][A-Za-z0-9_-]* через `/`, до {WEB_BASE_PATH_MAX_LEN} байт): WEB-ссылки выдаваться не будут",
+                self.web_proxy.base_path.as_deref().unwrap_or_default()
+            ));
+        }
         if self.webapp.enabled && self.webapp.https_public_url().is_none() {
             warnings.push(
                 "webapp.public_url не задан или не HTTPS: кнопка меню Mini App не будет установлена"
@@ -896,12 +940,15 @@ impl Config {
     /// WEB-ссылка (`tg://webproxy`) для пользователя, вычисленная из его обычной ссылки.
     pub fn web_proxy_link(&self, native_link: &str) -> Option<String> {
         let host = self.web_proxy.normalized_host()?;
+        let base_path = self.web_proxy.normalized_base_path().ok()?;
         let secret = crate::link::extract_user_secret(native_link)?;
-        Some(crate::link::build_web_proxy_link(
+        crate::link::build_web_proxy_link(
             &host,
+            base_path,
             &secret,
             self.web_proxy.secret_mode,
-        ))
+            self.web_proxy.link_scheme,
+        )
     }
 
     /// Добавляет к тексту блок с WEB-ссылкой, если WEB-прокси настроен.
@@ -927,7 +974,7 @@ impl Config {
 mod tests {
     use super::{
         BotMessages, Config, NotificationsConfig, RuntimeSection, SecurityConfig, TelemtApiConfig,
-        WebAppConfig, WebProxyConfig, WebSecretMode, default_runtime_mode,
+        WebAppConfig, WebLinkScheme, WebProxyConfig, WebSecretMode, default_runtime_mode,
     };
     use crate::runtime::RuntimeMode;
     use std::path::PathBuf;
@@ -1025,12 +1072,63 @@ mod tests {
         config.web_proxy = WebProxyConfig {
             host: Some(" LK.Example.com. ".to_string()),
             secret_mode: WebSecretMode::Dd,
+            ..WebProxyConfig::default()
         };
 
         assert_eq!(
             config.web_proxy_link(PROXY_LINK).as_deref(),
             Some("tg://webproxy?server=lk.example.com&secret=dd0123456789abcdef0123456789abcdef")
         );
+    }
+
+    #[test]
+    fn web_proxy_link_uses_base_path_and_https_scheme() {
+        let mut config = sample_config();
+        config.web_proxy = WebProxyConfig {
+            host: Some("joy.example.com".to_string()),
+            secret_mode: WebSecretMode::Dd,
+            base_path: Some(" /chill/ ".to_string()),
+            link_scheme: WebLinkScheme::Https,
+        };
+
+        assert_eq!(
+            config.web_proxy_link(PROXY_LINK).as_deref(),
+            Some(
+                "https://t.me/webproxy?server=joy.example.com%2Fchill&secret=cN0BI0VniavN7wEjRWeJq83v"
+            )
+        );
+    }
+
+    #[test]
+    fn web_proxy_link_is_absent_with_invalid_base_path() {
+        let mut config = sample_config();
+        config.web_proxy.host = Some("joy.example.com".to_string());
+        for path in ["chi ll", "a//b", "_chill", "chill/-x", &"a".repeat(129)] {
+            config.web_proxy.base_path = Some(path.to_string());
+            assert_eq!(config.web_proxy_link(PROXY_LINK), None, "path {path:?}");
+            let warnings = config.validate_web_sections().unwrap();
+            assert!(
+                warnings.iter().any(|w| w.contains("web_proxy.base_path")),
+                "{warnings:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn normalized_base_path_accepts_telemt_grammar() {
+        let mut web = WebProxyConfig::default();
+        assert_eq!(web.normalized_base_path(), Ok(None));
+        for (raw, expected) in [
+            ("", None),
+            ("  ", None),
+            ("/", None),
+            ("chill", Some("chill")),
+            ("/telegram/web/", Some("telegram/web")),
+            ("MixedCase/a_b-9", Some("MixedCase/a_b-9")),
+        ] {
+            web.base_path = Some(raw.to_string());
+            assert_eq!(web.normalized_base_path(), Ok(expected), "path {raw:?}");
+        }
     }
 
     #[test]
@@ -1086,12 +1184,19 @@ mod tests {
 
     #[test]
     fn web_proxy_config_deserializes_from_toml() {
-        let parsed: WebProxyConfig =
-            toml::from_str("host = \"lk.example.com\"\nsecret_mode = \"plain\"\n").unwrap();
+        let parsed: WebProxyConfig = toml::from_str(
+            "host = \"lk.example.com\"\nsecret_mode = \"plain\"\nbase_path = \"chill\"\nlink_scheme = \"https\"\n",
+        )
+        .unwrap();
 
         assert_eq!(parsed.host.as_deref(), Some("lk.example.com"));
         assert_eq!(parsed.secret_mode, WebSecretMode::Plain);
-        assert_eq!(WebProxyConfig::default().secret_mode, WebSecretMode::Dd);
+        assert_eq!(parsed.base_path.as_deref(), Some("chill"));
+        assert_eq!(parsed.link_scheme, WebLinkScheme::Https);
+        let default = WebProxyConfig::default();
+        assert_eq!(default.secret_mode, WebSecretMode::Dd);
+        assert_eq!(default.base_path, None);
+        assert_eq!(default.link_scheme, WebLinkScheme::Tg);
     }
 
     #[test]

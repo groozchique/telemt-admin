@@ -10,7 +10,7 @@
   - `mode` — `systemd` | `external` | `none` (default при явной секции: `systemd`).
   - `service_name` — override имени unit для `systemd` (иначе — верхнеуровневый `service_name`).
   - `label` — подпись в UI для `external` (например `docker compose`).
-- `users_page_size` — размер страницы списков в админском интерфейсе, включая пользователей, invite-токены и заявки (default: `10`).
+- `users_page_size` — размер страницы для списков в админском интерфейсе: пользователей, invite-токенов и заявок (default: `10`).
 - `[telemt_api]` — настройки control API `telemt`:
   - `enabled` — включить API-first backend.
   - `base_url` — базовый URL control API, например `http://127.0.0.1:9091`.
@@ -39,7 +39,7 @@
   - `default_token_days` — срок действия invite-ссылки по умолчанию, в днях (default: 14).
   - `max_token_days` — максимально допустимый срок действия invite-ссылки (default: 180).
   - `allow_auto_approve_tokens` — разрешить создание auto-approve токенов (default: `true`).
-  - `wizard_state_ttl_seconds` — опциональный TTL для сохранённого wizard-state в секундах. Если не задан, состояние хранится до явного завершения или отмены.
+  - `wizard_state_ttl_seconds` — опциональный TTL для сохранённого wizard-state в секундах. Если не задан, состояние хранится, пока сценарий не завершат или не отменят.
 - `[notifications]` — фоновые уведомления и мониторинг:
   - `enabled` — включить фоновый polling `telemt` API и уведомления.
   - `health_check_interval_secs` — интервал health-check и runtime polling в секундах.
@@ -80,11 +80,11 @@
 - `TELEMT_ADMIN__BOT_MESSAGES__USER_LINK_TEMPLATE` — шаблон сообщения со ссылкой.
 - `TELEMT_ADMIN__BOT_MESSAGES__BROADCAST_SUMMARY_TEMPLATE` — шаблон итоговой сводки рассылки.
 
-Секреты не следует вшивать в `Dockerfile` через `ENV`; используйте Compose `environment`, `env_file` или секреты оркестратора.
+Не вшивайте секреты в `Dockerfile` через `ENV`: передавайте их через Compose `environment`, `env_file` или секреты оркестратора.
 
 ## Wizard-state и БД
 
 - Пошаговое состояние wizard хранится в SQLite-таблице `bot_wizard_states`.
 - Схема БД обновляется автоматически при старте бота.
-- SQLite является источником истины для wizard-state, поэтому активный сценарий переживает рестарт процесса.
-- Если задан `security.wizard_state_ttl_seconds`, просроченные wizard-state автоматически удаляются и не восстанавливаются после истечения TTL.
+- Источник истины для wizard-state — SQLite, поэтому активный сценарий переживает рестарт процесса.
+- Если задан `security.wizard_state_ttl_seconds`, wizard-state старше TTL удаляется автоматически и не восстанавливается.

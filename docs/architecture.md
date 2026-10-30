@@ -14,7 +14,7 @@
 - `src/db/admin.rs` — агрегаты админки и структурированные события активности.
 - `src/db/wizard_state.rs` — хранение wizard-state и TTL cleanup.
 - `src/telemt_cfg.rs` — legacy-адаптер для чтения и изменения `telemt.toml`; блокирующий файловый I/O должен выполняться через offload, а не напрямую в async bot flow.
-- `src/telemt_backend.rs` — публичный фасад backend-слоя `telemt`, который сохраняет единый API для остального кода.
+- `src/telemt_backend.rs` — публичный фасад backend-слоя `telemt`, единый API для остального кода.
 - `src/telemt_backend/api_client.rs` и `src/telemt_backend/api_dto.rs` — HTTP-клиент control API, revision/retry и приватные DTO ответов.
 - `src/telemt_backend/control_api.rs`, `src/telemt_backend/legacy.rs`, `src/telemt_backend/mappers.rs`, `src/telemt_backend/types.rs` — реализация API-first backend, legacy fallback, чистые мапперы и публичные типы backend-слоя.
 - `src/telemt_backend/web_profiles.rs` — WEB-профили в `web.vhosts` через `PATCH /v1/config` и фоновый `POST /v1/system/reload` с drain (ADR 006).
@@ -76,16 +76,17 @@
 
 ## Observability-стек
 
-Проект предоставляет опциональный compose-стек (`deploy/compose/docker-compose.observability.yml`) с Prometheus и Grafana:
+Есть опциональный compose-стек с Prometheus и Grafana: `deploy/compose/docker-compose.observability.yml`.
 
-- **Prometheus** скрейпит `/metrics` от `telemt` (ожидается endpoint на порту control API или отдельном метрик-порту).
-- **Grafana** поднимается с преднастроенным datasource и provisioned дашбордом `Telemt Overview` (uptime, connections, traffic, top users, handshake errors).
-- **Сеть**: все сервисы (`telemt`, `telemt-admin`, `prometheus`, `grafana`) находятся в одной Docker bridge-сети `telemt-net`; Prometheus достаёт до `telemt` по DNS-имени.
+- Prometheus собирает `/metrics` с `telemt` (endpoint ожидается на порту control API или на отдельном порту метрик).
+- Grafana поднимается с преднастроенным datasource и provisioned дашбордом `Telemt Overview` (uptime, connections, traffic, top users, handshake errors).
+- Все сервисы (`telemt`, `telemt-admin`, `prometheus`, `grafana`) работают в одной Docker bridge-сети `telemt-net`, Prometheus обращается к `telemt` по DNS-имени.
 
-Security:
+Безопасность:
+
 - Если `/metrics` защищён `whitelist`, в `telemt.toml` нужно разрешить Docker-подсеть (обычно `172.16.0.0/12` или диапазон сети `telemt-net`).
 - Если `/metrics` требует `auth_header`, токен прописывается в `config/prometheus.yml` (см. закомментированный блок `authorization`).
-- Grafana по умолчанию создаёт администратора с credentials из `.env`; на production замените дефолтный пароль.
+- Grafana по умолчанию создаёт администратора с логином и паролем из `.env`. На production смените пароль по умолчанию.
 
 Новые runtime-возможности:
 

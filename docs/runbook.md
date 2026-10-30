@@ -2,7 +2,7 @@
 
 ## Назначение
 
-Этот документ описывает, как включать и проверять API-first интеграцию `telemt-admin` с `telemt`, а также как откатываться на legacy-путь при проблемах.
+Как включить и проверить API-first интеграцию `telemt-admin` с `telemt` и как откатиться на legacy-путь, если что-то пошло не так.
 
 ## Docker / `runtime = external`
 
@@ -79,7 +79,7 @@ Grafana-дашборд использует ожидаемые имена мет
 ## Группы, рассылка, импорт и тексты бота
 
 - **Группы**: таблицы `user_groups` и `user_group_members`; опциональный общий срок группы — `user_groups.expires_at` (unix). В UI доступны сценарии «задать/изменить срок», «снять срок» и «применить срок группы ко всем»; последний выполняет PATCH `expiration` для участников (нужен включённый `[telemt_api]`).
-- **WEB-профили** (`[web_proxy] manage_profiles`, ADR 006): при одобрении бот добавляет профиль через `PATCH /v1/config` и запускает reload `telemt` в режиме drain (`reload_drain_secs`, по умолчанию 300 с); перед удалением пользователя профиль снимается всегда. Каждый такой reload закрывает сессии старой генерации после drain — клиенты переподключаются. Ход reload: `GET /v1/system/reload/{id}`, в логах бота — `telemt reload accepted after WEB profile change`. Если reload не прошёл, профиль сохранён в конфиге, но не активен до следующего reload.
+- **WEB-профили** (`[web_proxy] manage_profiles`, ADR 006): при одобрении бот добавляет профиль через `PATCH /v1/config` и запускает reload `telemt` в режиме drain (`reload_drain_secs`, по умолчанию 300 с); перед удалением пользователя профиль снимается всегда. Каждый такой reload после drain закрывает сессии старой генерации, и клиенты переподключаются. Ход reload: `GET /v1/system/reload/{id}`, в логах бота — `telemt reload accepted after WEB profile change`. Если reload не прошёл, профиль сохранён в конфиге, но не активен до следующего reload.
 - **Обратная связь**: сообщение пользователя копируется всем `admin_ids` с заголовком и кнопкой «Ответить»; ответ админа уходит пользователю с кнопкой продолжить переписку. История в БД не хранится, ограничения частоты нет. Если пользователь заблокировал бота, админ получит ошибку доставки.
 - **Рассылка**: одно сообщение всем пользователям со статусом `approved`; учитывайте лимиты Telegram и то, что бот не доставит сообщение пользователям, которые ни разу не взаимодействовали с ботом.
 - **Импорт из telemt**: по числовому Telegram user id, только при `telemt_api.enabled`; локальная запись создаётся без сохранённого секрета (ссылки строятся через control API при `prefer_api_links` и т.п.).
@@ -178,7 +178,7 @@ notify_on_new_request = true
 - `/link` собирается локально по `secret` из SQLite;
 - delete идёт через старый путь редактирования `telemt.toml`.
 
-Fallback не должен быть скрытым operationally:
+Переход на fallback не должен проходить незаметно для оператора:
 
 - причина деградации должна отражаться в логах;
 - sync-метаданные пользователя в SQLite должны помогать понять, что произошло.
@@ -200,7 +200,7 @@ Fallback не должен быть скрытым operationally:
 
 ## Стабильные sync error codes
 
-На текущем этапе проект использует и резервирует следующие коды:
+Сейчас проект использует или резервирует такие коды:
 
 - `degraded_legacy_fallback` — операция должна была идти через control API, но была успешно применена через legacy fallback;
 - `user_not_found_in_backend` — локальная запись есть, но удаление/сверка не нашли пользователя в backend;
@@ -210,7 +210,7 @@ Fallback не должен быть скрытым operationally:
 - `api_error_revision_conflict` — резерв под конфликты revision/`If-Match`;
 - `api_error_not_found` — резерв под сценарии not found на control API.
 
-Текущая policy:
+Когда какие коды пишутся:
 
 - approve и auto-approve очищают `last_sync_error`, если provisioning завершился по чистому API-path;
 - approve и auto-approve пишут `degraded_legacy_fallback`, если проект был в режиме `API-first`, но provisioning фактически ушёл в legacy fallback;
@@ -233,7 +233,7 @@ Fallback не должен быть скрытым operationally:
   - проблемах и восстановлении `ME self-test` (`KDF`, `time skew`);
 - `notify_on_new_request` включает уведомления администраторам о новых manual-заявках.
 
-Operational note:
+На практике:
 
 - если на staging/production уведомления слишком шумные, сначала уменьшайте scope через флаги `notify_on_*`, а не выключайте весь `[telemt_api]`;
 - при `notifications.enabled = false` бот остаётся полностью рабочим, но перестаёт слать push-уведомления и health/runtime alerts;
@@ -241,7 +241,7 @@ Operational note:
 
 ## Частичная деградация control API
 
-Экран `/service` не должен считаться бинарным индикатором «всё работает / всё сломано».
+Экран `/service` показывает не только «всё работает» или «всё сломано».
 
 - systemd/host-runtime, локальная БД, sync-агрегаты и события админа могут отображаться даже если часть control API endpoints недоступна;
 - блок `Демон (control API)` зависит от runtime snapshot;
@@ -254,7 +254,7 @@ Operational note:
 
 - если отсутствует только блок `Демон (control API)` — проверить `/v1/health`, `/v1/system/info`, `/v1/runtime/*`, auth header и whitelist;
 - если падает только `Нагрузка` или `Top пользователей` — проверить runtime endpoints `/v1/stats/summary` и `/v1/runtime/connections/summary`;
-- если в `/service` виден рост `Sync: degraded` или появляются `Sync ошибки`, смотреть коды `last_sync_error` и correlate их с логами fallback/API;
+- если в `/service` виден рост `Sync: degraded` или появляются `Sync ошибки`, смотреть коды `last_sync_error` и сопоставлять их с логами fallback/API;
 - если Telegram-уведомления приходят, а `/service` показывает частичную деградацию, это ожидаемо: монитор планирует сигналы отдельно от рендеринга UI и не требует полной доступности всех endpoints.
 
 ## Когда нужен restart `telemt`
@@ -282,7 +282,7 @@ Restart обязателен, если менялись параметры `[ser
 
 ## Откат
 
-Если rollout проходит неуспешно:
+Если rollout не удался:
 
 1. установить `[telemt_api].enabled = false` в `telemt-admin.toml`;
 2. при необходимости отключить `[notifications].enabled`, чтобы убрать фоновые API health-check;

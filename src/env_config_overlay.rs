@@ -182,6 +182,11 @@ pub fn apply(config: &mut Config) -> Result<Vec<String>, anyhow::Error> {
         applied.push("TELEMT_ADMIN__WEB_PROXY__BASE_PATH".to_string());
     }
 
+    if let Some(v) = read_nonempty("WEB_PROXY__MANAGE_PROFILES") {
+        config.web_proxy.manage_profiles = parse_bool(&v)?;
+        applied.push("TELEMT_ADMIN__WEB_PROXY__MANAGE_PROFILES".to_string());
+    }
+
     if let Some(v) = read_nonempty("WEB_PROXY__LINK_SCHEME") {
         config.web_proxy.link_scheme = parse_web_link_scheme(&v)?;
         applied.push("TELEMT_ADMIN__WEB_PROXY__LINK_SCHEME".to_string());

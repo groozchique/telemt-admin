@@ -17,6 +17,7 @@
 - `src/telemt_backend.rs` — публичный фасад backend-слоя `telemt`, который сохраняет единый API для остального кода.
 - `src/telemt_backend/api_client.rs` и `src/telemt_backend/api_dto.rs` — HTTP-клиент control API, revision/retry и приватные DTO ответов.
 - `src/telemt_backend/control_api.rs`, `src/telemt_backend/legacy.rs`, `src/telemt_backend/mappers.rs`, `src/telemt_backend/types.rs` — реализация API-first backend, legacy fallback, чистые мапперы и публичные типы backend-слоя.
+- `src/telemt_backend/web_profiles.rs` — WEB-профили в `web.vhosts` через `PATCH /v1/config` и фоновый `POST /v1/system/reload` с drain (ADR 006).
 - `src/runtime/` — универсальный слой управления процессом telemt (`TelemtRuntime`: systemd / external / none) и capability-модель для UI.
 - `src/service.rs` — реализация вызовов `systemctl` и `journalctl` для режима `systemd`.
 - `src/link.rs` — генерация секрета, `tg://proxy`-ссылки, извлечение секрета из ссылки и `tg://webproxy`-ссылки.

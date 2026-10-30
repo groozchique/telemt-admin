@@ -473,7 +473,10 @@ Deep links для администраторов поддерживают не �
   - `secret_mode` — `dd` (по умолчанию) или `plain`; должен совпадать с `secret_mode` профиля в `[[web.vhosts.profiles]]` `telemt`.
   - `base_path` — `[[web.vhosts]].base_path` vhost `telemt`, например `chill` или `telegram/web` (без крайних `/`). Если задан, бот выдаёт path-ссылку в формате `telemt`: `server=<host>%2F<base_path>`, секрет — base64url от `0x70 || [0xdd] || secret`. Пусто — root-ссылка с hex-секретом. Некорректное значение отключает WEB-ссылки (предупреждение в логе при старте).
   - `link_scheme` — вид ссылки: `tg` (по умолчанию, `tg://webproxy?…`) или `https` (`https://t.me/webproxy?…`).
-  - Бот **не** создаёт WEB-профили в `telemt`: без профиля у пользователя WEB-ссылка не заработает.
+  - `manage_profiles` — `true`: при одобрении бот сам добавляет пользователю профиль в `[[web.vhosts.profiles]]` через control API (`PATCH /v1/config`) и сразу делает reload `telemt` (по умолчанию `false`; нужен `telemt_api.enabled`). Подробности — ADR 006.
+  - `reload_drain_secs` — сколько секунд старые сессии `telemt` доживают при таком reload (drain), от 1 до 3600 (по умолчанию 300); затем они закрываются и клиенты переподключаются.
+  - Перед удалением пользователя бот всегда убирает его WEB-профили: иначе `telemt` отклоняет удаление.
+  - Без `manage_profiles` бот **не** создаёт WEB-профили в `telemt`: без профиля у пользователя WEB-ссылка не заработает.
 - `[webapp]` — встроенное веб-приложение Telegram Mini App (ADR 005):
   - `enabled` — запустить HTTP-сервер приложения (default: `false`).
   - `listen` — адрес сервера (default: `127.0.0.1:8090`); наружу публикуется только через HTTPS reverse proxy.
@@ -669,7 +672,7 @@ docker compose logs --tail=100 telemt-admin
   Проверьте `[telemt_api]` и доступность control API `telemt` с машины бота.
 
 - WEB-ссылка не подключается  
-  Бот не создаёт WEB-профили в `telemt`: у пользователя должен быть профиль в `[[web.vhosts.profiles]]` с тем же `secret_mode`, что в `[web_proxy]`, а `[web_proxy] host` и `base_path` должны совпадать с `host` и `base_path` vhost WEB-прокси.
+  Без `[web_proxy] manage_profiles` бот не создаёт WEB-профили в `telemt`: у пользователя должен быть профиль в `[[web.vhosts.profiles]]` с тем же `secret_mode`, что в `[web_proxy]`, а `[web_proxy] host` и `base_path` должны совпадать с `host` и `base_path` vhost WEB-прокси.
 
 ## CI/CD
 

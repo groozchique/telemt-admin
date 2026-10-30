@@ -148,7 +148,17 @@ pub struct WebProxyConfig {
     /// Вид ссылки: `tg` (по умолчанию) или `https`
     #[serde(default)]
     pub link_scheme: WebLinkScheme,
+    /// Добавлять WEB-профиль новому пользователю через control API и сразу делать reload telemt
+    #[serde(default)]
+    pub manage_profiles: bool,
+    /// Drain старых сессий при reload после изменения WEB-профилей, секунды (по умолчанию 300)
+    #[serde(default)]
+    pub reload_drain_secs: Option<u64>,
 }
+
+/// Допустимый drain при reload telemt (как `timeout_secs` в `/v1/system/reload`).
+const WEB_RELOAD_DRAIN_SECS_RANGE: std::ops::RangeInclusive<u64> = 1..=3600;
+const DEFAULT_WEB_RELOAD_DRAIN_SECS: u64 = 300;
 
 impl WebProxyConfig {
     /// Нормализованный hostname или `None`, если WEB не настроен или значение некорректно.
@@ -171,6 +181,11 @@ impl WebProxyConfig {
                         .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
             });
         valid.then_some(host)
+    }
+
+    pub fn effective_reload_drain_secs(&self) -> u64 {
+        self.reload_drain_secs
+            .unwrap_or(DEFAULT_WEB_RELOAD_DRAIN_SECS)
     }
 
     /// Префикс пути без крайних `/`: `Ok(None)` — не задан, `Err(())` — некорректен
@@ -967,6 +982,27 @@ impl Config {
                 "web_proxy.host `{host}` некорректен (нужен FQDN без схемы, порта и пути): WEB-ссылки выдаваться не будут"
             ));
         }
+        let drain = self.web_proxy.effective_reload_drain_secs();
+        if !WEB_RELOAD_DRAIN_SECS_RANGE.contains(&drain) {
+            return Err(anyhow::anyhow!(
+                "web_proxy.reload_drain_secs должен быть от {} до {} секунд, задано {drain}",
+                WEB_RELOAD_DRAIN_SECS_RANGE.start(),
+                WEB_RELOAD_DRAIN_SECS_RANGE.end()
+            ));
+        }
+        if self.web_proxy.manage_profiles {
+            if !self.telemt_api.enabled {
+                warnings.push(
+                    "web_proxy.manage_profiles требует telemt_api.enabled: WEB-профили добавляться не будут"
+                        .to_string(),
+                );
+            } else if self.web_proxy.normalized_host().is_none() {
+                warnings.push(
+                    "web_proxy.manage_profiles требует корректный web_proxy.host: WEB-профили добавляться не будут"
+                        .to_string(),
+                );
+            }
+        }
         if self.web_proxy.normalized_base_path().is_err() {
             warnings.push(format!(
                 "web_proxy.base_path `{}` некорректен (сегменты [A-Za-z0-9][A-Za-z0-9_-]* через `/`, до {WEB_BASE_PATH_MAX_LEN} байт): WEB-ссылки выдаваться не будут",
@@ -1144,6 +1180,7 @@ mod tests {
             secret_mode: WebSecretMode::Dd,
             base_path: Some(" /chill/ ".to_string()),
             link_scheme: WebLinkScheme::Https,
+            ..WebProxyConfig::default()
         };
 
         assert_eq!(
@@ -1167,6 +1204,29 @@ mod tests {
                 "{warnings:?}"
             );
         }
+    }
+
+    #[test]
+    fn manage_profiles_warnings_and_drain_range() {
+        let mut config = sample_config();
+        assert_eq!(config.web_proxy.effective_reload_drain_secs(), 300);
+        config.web_proxy.manage_profiles = true;
+        let warnings = config.validate_web_sections().unwrap();
+        assert!(
+            warnings.iter().any(|w| w.contains("manage_profiles")),
+            "{warnings:?}"
+        );
+
+        config.telemt_api.enabled = true;
+        config.web_proxy.host = Some("joy.example.com".to_string());
+        assert!(config.validate_web_sections().unwrap().is_empty());
+
+        config.web_proxy.reload_drain_secs = Some(0);
+        assert!(config.validate_web_sections().is_err());
+        config.web_proxy.reload_drain_secs = Some(3601);
+        assert!(config.validate_web_sections().is_err());
+        config.web_proxy.reload_drain_secs = Some(60);
+        assert_eq!(config.web_proxy.effective_reload_drain_secs(), 60);
     }
 
     #[test]

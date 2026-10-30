@@ -105,6 +105,47 @@ impl TelemtApiClient {
         }
     }
 
+    /// Изменение с явной ревизией (`If-Match`) без автоматического повтора: вызывающий код
+    /// сам перечитывает данные при `409 revision_conflict`.
+    pub(crate) async fn mutate_with_revision<TBody: Serialize + ?Sized, TData: DeserializeOwned>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&TBody>,
+        revision: &str,
+    ) -> Result<SuccessEnvelope<TData>, anyhow::Error> {
+        let mut request = self
+            .client
+            .request(method.clone(), self.endpoint(path))
+            .headers(self.base_headers())
+            .header(IF_MATCH, revision);
+        if let Some(body) = body {
+            request = request.json(body);
+        }
+        let response = request
+            .send()
+            .await
+            .with_context(|| format!("Не удалось выполнить {} {}", method, path))?;
+        self.parse_success_response(response).await
+    }
+
+    /// POST без ревизии (команды вроде `/v1/system/reload`).
+    pub(crate) async fn post_success<TBody: Serialize + ?Sized, TData: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &TBody,
+    ) -> Result<SuccessEnvelope<TData>, anyhow::Error> {
+        let response = self
+            .client
+            .request(Method::POST, self.endpoint(path))
+            .headers(self.base_headers())
+            .json(body)
+            .send()
+            .await
+            .with_context(|| format!("Не удалось выполнить POST {}", path))?;
+        self.parse_success_response(response).await
+    }
+
     pub(crate) async fn cached_revision(&self) -> Option<String> {
         self.revision.lock().await.clone()
     }

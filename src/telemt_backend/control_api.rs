@@ -22,11 +22,16 @@ use super::mappers::{
 use super::types::{
     DeleteUserResult, ProvisionedUser, TelemtApiError, TelemtBackendMode, TelemtConnectionsSummary,
     TelemtMonitorSnapshot, TelemtRuntimeEvent, TelemtRuntimeSnapshot, TelemtStatsSummary,
-    TelemtUserActivity, TelemtUserInfo, TelemtUserPatch,
+    TelemtUserActivity, TelemtUserInfo, TelemtUserPatch, WebProfileTarget,
+};
+use super::web_profiles::{
+    ReloadScheduler, RemovedProfile, patch_vhosts, restore_profiles, take_profiles, upsert_profile,
 };
 
 pub(crate) struct ApiTelemtBackend {
-    client: TelemtApiClient,
+    client: Arc<TelemtApiClient>,
+    web_profiles: Option<WebProfileTarget>,
+    reload: Arc<ReloadScheduler>,
     allow_file_fallback: bool,
     prefer_api_links: bool,
     telemt_cfg: Arc<TelemtConfig>,
@@ -36,15 +41,21 @@ pub(crate) struct ApiTelemtBackend {
 impl ApiTelemtBackend {
     pub(crate) fn new(
         api_cfg: &TelemtApiConfig,
+        web_profiles: Option<WebProfileTarget>,
+        reload_drain_secs: u64,
         telemt_cfg: Arc<TelemtConfig>,
         telemt_runtime: TelemtRuntime,
     ) -> Result<Self, anyhow::Error> {
         let legacy_fallback = api_cfg
             .allow_file_fallback
             .then(|| LegacyTelemtBackend::new(telemt_cfg.clone(), telemt_runtime));
+        let client = Arc::new(TelemtApiClient::new(api_cfg)?);
+        let reload = Arc::new(ReloadScheduler::new(client.clone(), reload_drain_secs));
 
         Ok(Self {
-            client: TelemtApiClient::new(api_cfg)?,
+            client,
+            web_profiles,
+            reload,
             allow_file_fallback: api_cfg.allow_file_fallback,
             prefer_api_links: api_cfg.prefer_api_links,
             telemt_cfg,
@@ -78,11 +89,14 @@ impl ApiTelemtBackend {
                         error = %error,
                         "telemt API provision failed; falling back to legacy backend"
                     );
-                    return legacy.provision_user(username, desired_secret).await;
+                    let provisioned = legacy.provision_user(username, desired_secret).await?;
+                    self.ensure_web_profile(username).await;
+                    return Ok(provisioned);
                 }
                 return Err(error);
             }
         };
+        self.ensure_web_profile(username).await;
         let CreateUserResponse { user, secret } = response.data;
         let link = if self.prefer_api_links {
             match pick_best_link(&user.links) {
@@ -104,6 +118,21 @@ impl ApiTelemtBackend {
     }
 
     pub(crate) async fn delete_user(
+        &self,
+        username: &str,
+    ) -> Result<DeleteUserResult, anyhow::Error> {
+        let removed_profiles = self.remove_web_profiles(username).await;
+        if !removed_profiles.is_empty() {
+            self.reload.request();
+        }
+        let result = self.delete_user_after_profiles(username).await;
+        if result.is_err() && !removed_profiles.is_empty() {
+            self.restore_web_profiles(username, &removed_profiles).await;
+        }
+        result
+    }
+
+    async fn delete_user_after_profiles(
         &self,
         username: &str,
     ) -> Result<DeleteUserResult, anyhow::Error> {
@@ -138,6 +167,112 @@ impl ApiTelemtBackend {
                 }
                 Err(error)
             }
+        }
+    }
+
+    /// Добавляет WEB-профили всем пользователям бота (`tg_*`), у которых их нет: пользователям,
+    /// созданным до `manage_profiles`, через legacy fallback или при недоступном API.
+    /// Возвращает число добавленных профилей.
+    pub(crate) async fn sync_web_profiles(&self) -> Result<usize, anyhow::Error> {
+        let Some(target) = &self.web_profiles else {
+            return Ok(0);
+        };
+        let users: Vec<String> = self
+            .list_users()
+            .await?
+            .into_iter()
+            .map(|user| user.username)
+            .filter(|username| username.starts_with("tg_"))
+            .collect();
+        let mut added = 0;
+        patch_vhosts(&self.client, |vhosts| {
+            added = 0;
+            for username in &users {
+                if upsert_profile(vhosts, target, username)? {
+                    added += 1;
+                }
+            }
+            Ok(added > 0)
+        })
+        .await?;
+        if added > 0 {
+            tracing::info!(added = added, host = %target.host, "Missing WEB profiles added");
+            self.reload.request();
+        }
+        Ok(added)
+    }
+
+    /// Добавляет WEB-профиль новому пользователю и ставит reload. Ошибка не мешает выдаче
+    /// обычной ссылки: она логируется, WEB-ссылка заработает после ручного добавления профиля.
+    async fn ensure_web_profile(&self, username: &str) {
+        let Some(target) = &self.web_profiles else {
+            return;
+        };
+        match patch_vhosts(&self.client, |vhosts| {
+            upsert_profile(vhosts, target, username)
+        })
+        .await
+        {
+            Ok(true) => {
+                tracing::info!(username = username, host = %target.host, "WEB profile added");
+                self.reload.request();
+            }
+            Ok(false) => {}
+            Err(error) => tracing::warn!(
+                username = username,
+                error = %error,
+                "Failed to add WEB profile"
+            ),
+        }
+    }
+
+    /// Снимает WEB-профили пользователя перед удалением: telemt отклоняет удаление
+    /// пользователя, на которого ссылается профиль. Возвращает снятые профили.
+    async fn remove_web_profiles(&self, username: &str) -> Vec<RemovedProfile> {
+        let mut removed = Vec::new();
+        let result = patch_vhosts(&self.client, |vhosts| {
+            removed = take_profiles(vhosts, username);
+            Ok(!removed.is_empty())
+        })
+        .await;
+        match result {
+            Ok(true) => {
+                tracing::info!(
+                    username = username,
+                    "WEB profile removed before user deletion"
+                );
+                removed
+            }
+            Ok(false) => Vec::new(),
+            Err(error) => {
+                tracing::warn!(
+                    username = username,
+                    error = %error,
+                    "Failed to remove WEB profile before user deletion"
+                );
+                Vec::new()
+            }
+        }
+    }
+
+    /// Возвращает WEB-профили, снятые перед удалением, если telemt не удалил пользователя:
+    /// иначе у оставшегося пользователя перестанет работать WEB-ссылка.
+    async fn restore_web_profiles(&self, username: &str, removed: &[RemovedProfile]) {
+        match patch_vhosts(&self.client, |vhosts| Ok(restore_profiles(vhosts, removed))).await {
+            Ok(restored) => {
+                if restored {
+                    tracing::info!(
+                        username = username,
+                        "WEB profile restored after failed user deletion"
+                    );
+                    self.reload.request();
+                }
+            }
+            Err(error) => tracing::warn!(
+                username = username,
+                error = %error,
+                "Failed to restore WEB profile after failed user deletion"
+            ),
         }
     }
 

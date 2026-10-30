@@ -71,11 +71,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         config.effective_systemd_unit(),
         config.effective_external_label(),
     );
+    let web_profiles = config
+        .web_proxy
+        .manage_profiles
+        .then(|| {
+            let host = config.web_proxy.normalized_host()?;
+            let base_path = config.web_proxy.normalized_base_path().ok()?;
+            Some(telemt_backend::WebProfileTarget {
+                host,
+                base_path: base_path.map(str::to_string),
+                secret_mode: config.web_proxy.secret_mode,
+            })
+        })
+        .flatten();
     let telemt_backend = telemt_backend::TelemtBackend::new(
         &config.telemt_api,
+        web_profiles,
+        config.web_proxy.effective_reload_drain_secs(),
         telemt_cfg.clone(),
         telemt_runtime.clone(),
     )?;
+
+    {
+        let telemt_backend = telemt_backend.clone();
+        tokio::spawn(async move {
+            if let Err(error) = telemt_backend.sync_web_profiles().await {
+                tracing::warn!(error = %error, "Failed to add missing WEB profiles");
+            }
+        });
+    }
 
     let bot = Bot::new(token.clone());
     let from_get_me = match bot.get_me().await {

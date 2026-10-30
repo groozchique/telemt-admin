@@ -158,3 +158,13 @@ pub struct TelemtApiError {
     pub code: Option<String>,
     pub message: String,
 }
+
+/// WEB-vhost telemt, в который бот добавляет профили новых пользователей.
+#[derive(Clone, Debug)]
+pub struct WebProfileTarget {
+    /// Нормализованный hostname (как `[web_proxy] host`).
+    pub host: String,
+    /// `[[web.vhosts]].base_path` без крайних `/`.
+    pub base_path: Option<String>,
+    pub secret_mode: crate::config::WebSecretMode,
+}

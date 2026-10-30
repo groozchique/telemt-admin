@@ -16,6 +16,7 @@
 - `003-runtime-agnostic-deployment.md` — режимы `systemd` / `external` / `none` и Docker без unit внутри образа.
 - `004-config-sources-and-docker-defaults.md` — TOML как канон, whitelist `TELEMT_ADMIN__*`, пример конфига в образе без секретов в `ENV`.
 - `005-telegram-mini-app.md` — Telegram Mini App: встроенный HTTP-сервер, авторизация через подписанный `initData`, reverse proxy.
+- `006-web-profiles-management.md` — WEB-профили telemt: добавление при одобрении, снятие перед удалением, reload с drain.
 
 ## Когда обновлять ADR
 

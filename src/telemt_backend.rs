@@ -10,6 +10,8 @@ mod legacy;
 mod mappers;
 #[path = "telemt_backend/types.rs"]
 mod types;
+#[path = "telemt_backend/web_profiles.rs"]
+mod web_profiles;
 
 use std::sync::Arc;
 
@@ -26,7 +28,7 @@ use legacy::LegacyTelemtBackend;
 pub use types::{
     DeleteUserResult, ProvisionedUser, TelemtApiError, TelemtBackendMode, TelemtConnectionTopUser,
     TelemtConnectionsSummary, TelemtMonitorSnapshot, TelemtRuntimeEvent, TelemtRuntimeSnapshot,
-    TelemtStatsSummary, TelemtUserActivity, TelemtUserInfo, TelemtUserPatch,
+    TelemtStatsSummary, TelemtUserActivity, TelemtUserInfo, TelemtUserPatch, WebProfileTarget,
 };
 
 #[derive(Clone)]
@@ -40,13 +42,23 @@ enum TelemtBackendInner {
 }
 
 impl TelemtBackend {
+    /// `web_profiles` — vhost для профилей новых пользователей (`[web_proxy] manage_profiles`);
+    /// `reload_drain_secs` — drain при reload после изменения WEB-профилей.
     pub fn new(
         api_cfg: &TelemtApiConfig,
+        web_profiles: Option<WebProfileTarget>,
+        reload_drain_secs: u64,
         telemt_cfg: Arc<TelemtConfig>,
         telemt_runtime: TelemtRuntime,
     ) -> Result<Self, anyhow::Error> {
         let inner = if api_cfg.enabled {
-            TelemtBackendInner::Api(ApiTelemtBackend::new(api_cfg, telemt_cfg, telemt_runtime)?)
+            TelemtBackendInner::Api(ApiTelemtBackend::new(
+                api_cfg,
+                web_profiles,
+                reload_drain_secs,
+                telemt_cfg,
+                telemt_runtime,
+            )?)
         } else {
             TelemtBackendInner::Legacy(LegacyTelemtBackend::new(telemt_cfg, telemt_runtime))
         };
@@ -80,6 +92,15 @@ impl TelemtBackend {
         match self.inner.as_ref() {
             TelemtBackendInner::Legacy(legacy) => legacy.delete_user(username).await,
             TelemtBackendInner::Api(api) => api.delete_user(username).await,
+        }
+    }
+
+    /// Добавляет недостающие WEB-профили пользователям бота (`[web_proxy] manage_profiles`).
+    /// Возвращает число добавленных профилей; в legacy-режиме ничего не делает.
+    pub async fn sync_web_profiles(&self) -> Result<usize, anyhow::Error> {
+        match self.inner.as_ref() {
+            TelemtBackendInner::Legacy(_) => Ok(0),
+            TelemtBackendInner::Api(api) => api.sync_web_profiles().await,
         }
     }
 

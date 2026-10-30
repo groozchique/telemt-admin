@@ -35,6 +35,8 @@ allow_auto_approve_tokens = true
 # secret_mode = "dd"        # dd | plain — как secret_mode профиля в [[web.vhosts.profiles]]
 # base_path = "chill"       # [[web.vhosts]].base_path; пусто — root-ссылка
 # link_scheme = "tg"        # tg (tg://webproxy) | https (https://t.me/webproxy)
+# manage_profiles = false   # true: при одобрении добавлять WEB-профиль через API и делать reload telemt
+# reload_drain_secs = 300   # drain старых сессий при этом reload, 1..3600
 
 [bot_messages]
 # При /start без invite-токена можно отдать нейтральный текст-заглушку и не переводить

@@ -28,7 +28,8 @@
 - `src/bot/handlers/actions/users.rs` — orchestration пользовательской карточки, lookup-сценариев, auto-import существующего `telemt`-пользователя и изменения live-лимитов.
 - `src/bot/handlers/actions/access.rs` — approve/invite flow, выдача ссылок и правила auto-import/повторного invite для existing user.
 - `src/bot/handlers/actions/broadcast.rs` — рассылка approved-пользователям и итоговая сводка по доставке.
-- `src/bot/handlers/menu.rs` — текстовый ввод для активного wizard-state.
+- `src/bot/handlers/actions/feedback.rs` — обратная связь: копирование сообщений пользователя админам (`copy_message`, альбомы по `media_group_id`) и доставка ответов админа.
+- `src/bot/handlers/menu.rs` — ввод для активного wizard-state: текст, а для обратной связи — сообщения любого типа.
 - `src/bot/keyboards.rs` — inline-клавиатуры.
 - `src/bot/handlers/screens/mod.rs` — общие утилиты рендеринга экранов (`upsert_screen`, `page_bounds`, `compact_line`).
 - `src/bot/handlers/screens/home.rs` — стартовые экраны админа и пользователя, гайд.

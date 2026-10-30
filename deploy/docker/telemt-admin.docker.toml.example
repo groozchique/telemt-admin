@@ -72,3 +72,7 @@ allow_auto_approve_tokens = true
 # admin_notify_new_request_template = "📋 Новая заявка #{id}: User ID: {user_id}, Username: @{username}, Имя: {display_name}, Время: {time}"
 # admin_notify_auto_approve_template = "✅ Автоподключение по invite-токену: User ID: {user_id}, Username: @{username}, Token: {token}"
 # fallback_unknown_request_text = "Не понял запрос. Используйте /help или начните сценарий через кнопку."
+# feedback_prompt = "Напишите сообщение администратору и отправьте его следующим сообщением. Можно приложить фото, видео, файл или голосовое."
+# feedback_sent = "Сообщение отправлено администратору. Ответ придёт в этот чат."
+# feedback_reply_header = "💬 Ответ администратора:"
+# admin_feedback_template = "✉️ Обратная связь\n User ID: {user_id}\n Username: @{username}\n Имя: {display_name}"

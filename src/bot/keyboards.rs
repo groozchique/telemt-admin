@@ -72,6 +72,7 @@ pub fn user_home_keyboard(has_access: bool) -> InlineKeyboardMarkup {
                     CallbackAction::ShowUsageGuide.encode(),
                 ),
             ],
+            vec![feedback_button()],
             vec![InlineKeyboardButton::callback(
                 "🔄 Обновить статус",
                 CallbackAction::ShowUserHome.encode(),
@@ -87,12 +88,33 @@ pub fn user_home_keyboard(has_access: bool) -> InlineKeyboardMarkup {
                 "🔗 Получить ссылку",
                 CallbackAction::ShowUserLink.encode(),
             )],
+            vec![feedback_button()],
             vec![InlineKeyboardButton::callback(
                 "🔄 Обновить статус",
                 CallbackAction::ShowUserHome.encode(),
             )],
         ])
     }
+}
+
+fn feedback_button() -> InlineKeyboardButton {
+    InlineKeyboardButton::callback("✉️ Обратная связь", CallbackAction::PromptFeedback.encode())
+}
+
+/// Кнопка под ответом администратора: продолжить переписку.
+pub fn feedback_continue_keyboard() -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
+        "✉️ Ответить",
+        CallbackAction::PromptFeedback.encode(),
+    )]])
+}
+
+/// Кнопка под сообщением обратной связи у администратора.
+pub fn feedback_reply_keyboard(tg_user_id: i64) -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::new(vec![vec![InlineKeyboardButton::callback(
+        "↩️ Ответить",
+        CallbackAction::PromptFeedbackReply { tg_user_id }.encode(),
+    )]])
 }
 
 pub fn guide_keyboard() -> InlineKeyboardMarkup {

@@ -4,6 +4,7 @@ use crate::bot::handlers::callback_data::CallbackAction;
 use crate::bot::handlers::screens::{show_admin_home, show_usage_guide, show_user_home};
 use crate::bot::handlers::shared::callback_message_target;
 use crate::bot::handlers::state::{BotState, WizardState, clear_wizard_state};
+use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::{Bot, CallbackQuery, Requester};
 
 pub async fn handle_user_action(
@@ -75,6 +76,35 @@ pub async fn handle_user_action(
                         .bot_messages
                         .invite_followup_prompt_or_default(),
                 )
+                .await?;
+            }
+            Ok(true)
+        }
+        CallbackAction::PromptFeedback => {
+            let user_id = q.from.id.0 as i64;
+            replace_wizard_state(
+                state,
+                user_id,
+                WizardState::UserFeedback {
+                    media_group_id: None,
+                },
+            )
+            .await?;
+            ack_callback(
+                bot,
+                q.id.clone(),
+                Some("Жду сообщение для администратора"),
+                false,
+            )
+            .await?;
+            if let Some((chat_id, _)) = callback_message_target(q) {
+                bot.send_message(
+                    chat_id,
+                    state.config.bot_messages.feedback_prompt_or_default(),
+                )
+                .reply_markup(crate::bot::keyboards::cancel_keyboard(
+                    CallbackAction::ShowUserHome,
+                ))
                 .await?;
             }
             Ok(true)

@@ -1,3 +1,4 @@
+mod feedback;
 mod groups;
 mod home;
 mod pending;
@@ -18,6 +19,9 @@ pub async fn handle_admin_action(
     action: CallbackAction,
 ) -> AdminActionResult {
     if home::handle(bot, q, state, action.clone()).await? {
+        return Ok(true);
+    }
+    if feedback::handle(bot, q, state, action.clone()).await? {
         return Ok(true);
     }
     if groups::handle(bot, q, state, action.clone()).await? {

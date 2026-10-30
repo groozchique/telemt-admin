@@ -1,7 +1,8 @@
 use super::actions::{
-    apply_user_limit_from_input, broadcast_to_approved_users, handle_token_create_from_text,
-    import_remote_user_by_tg_id, open_token_from_lookup_input, open_user_from_lookup_input,
-    process_invite_token, prompt_delete_confirmation,
+    FeedbackStep, apply_user_limit_from_input, broadcast_to_approved_users, feedback_step,
+    handle_token_create_from_text, import_remote_user_by_tg_id, open_token_from_lookup_input,
+    open_user_from_lookup_input, process_invite_token, prompt_delete_confirmation,
+    send_feedback_reply, send_user_feedback,
 };
 use super::shared::{HandlerResult, send_admin_backend_error};
 use super::state::{
@@ -64,14 +65,52 @@ pub async fn handle_menu_buttons(bot: Bot, msg: Message, state: BotState) -> Han
 }
 
 async fn handle_menu_buttons_inner(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
-    let Some(text) = msg.text() else {
-        return Ok(());
-    };
     let Some(user_id) = sender_user_id(&msg) else {
         return Ok(());
     };
+    let message_group = msg.media_group_id().map(|group| group.0.as_str());
 
-    match wizard_state(&state, user_id).await? {
+    // Обратная связь принимает сообщения любого типа, остальные сценарии — только текст.
+    let current_state = match wizard_state(&state, user_id).await? {
+        Some(WizardState::UserFeedback { media_group_id }) => {
+            match feedback_step(media_group_id.as_deref(), message_group) {
+                FeedbackStep::Leave => {
+                    clear_wizard_state(&state, user_id).await?;
+                    None
+                }
+                step => return send_user_feedback(&bot, &msg, &state, user_id, step).await,
+            }
+        }
+        Some(WizardState::AdminFeedbackReply {
+            tg_user_id,
+            media_group_id,
+        }) => {
+            if !is_admin_message(&msg, &state) {
+                clear_wizard_state(&state, user_id).await?;
+                return Ok(());
+            }
+            match feedback_step(media_group_id.as_deref(), message_group) {
+                FeedbackStep::Leave => {
+                    clear_wizard_state(&state, user_id).await?;
+                    None
+                }
+                step => {
+                    return send_feedback_reply(&bot, &msg, &state, user_id, tg_user_id, step)
+                        .await;
+                }
+            }
+        }
+        other => other,
+    };
+
+    let Some(text) = msg.text() else {
+        return Ok(());
+    };
+
+    match current_state {
+        Some(WizardState::UserFeedback { .. } | WizardState::AdminFeedbackReply { .. }) => {
+            // Обработано выше.
+        }
         Some(WizardState::AdminBroadcastAwaitingMessage) => {
             if !is_admin_message(&msg, &state) {
                 clear_wizard_state(&state, user_id).await?;

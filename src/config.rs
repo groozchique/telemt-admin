@@ -299,6 +299,18 @@ pub struct BotMessages {
     /// Текст при отсутствии wizard-состояния (непонятный запрос).
     #[serde(default)]
     pub fallback_unknown_request_text: Option<String>,
+    /// Подсказка после кнопки «Обратная связь».
+    #[serde(default)]
+    pub feedback_prompt: Option<String>,
+    /// Подтверждение пользователю, что сообщение передано администраторам.
+    #[serde(default)]
+    pub feedback_sent: Option<String>,
+    /// Заголовок перед ответом администратора пользователю.
+    #[serde(default)]
+    pub feedback_reply_header: Option<String>,
+    /// Шаблон заголовка обратной связи для админов.
+    #[serde(default)]
+    pub admin_feedback_template: Option<String>,
 }
 
 impl BotMessages {
@@ -541,6 +553,41 @@ impl BotMessages {
     pub fn token_error_usage_limit_or_default(&self) -> &str {
         const DEFAULT: &str = "Лимит активаций invite-токена исчерпан.";
         Self::non_empty(self.token_error_usage_limit.as_deref()).unwrap_or(DEFAULT)
+    }
+
+    pub fn feedback_prompt_or_default(&self) -> &str {
+        const DEFAULT: &str = "Напишите сообщение администратору и отправьте его следующим сообщением. Можно приложить фото, видео, файл или голосовое.";
+        Self::non_empty(self.feedback_prompt.as_deref()).unwrap_or(DEFAULT)
+    }
+
+    pub fn feedback_sent_or_default(&self) -> &str {
+        const DEFAULT: &str = "Сообщение отправлено администратору. Ответ придёт в этот чат.";
+        Self::non_empty(self.feedback_sent.as_deref()).unwrap_or(DEFAULT)
+    }
+
+    pub fn feedback_reply_header_or_default(&self) -> &str {
+        const DEFAULT: &str = "💬 Ответ администратора:";
+        Self::non_empty(self.feedback_reply_header.as_deref()).unwrap_or(DEFAULT)
+    }
+
+    /// Заголовок сообщения обратной связи для админов; поддерживает `{user_id}`, `{username}`, `{display_name}`.
+    pub fn admin_feedback_text(
+        &self,
+        user_id: i64,
+        username: Option<&str>,
+        display_name: Option<&str>,
+    ) -> String {
+        const DEFAULT: &str =
+            "✉️ Обратная связь\n User ID: {user_id}\n Username: @{username}\n Имя: {display_name}";
+        Self::render_template(
+            self.admin_feedback_template.as_deref(),
+            DEFAULT,
+            &[
+                ("user_id", user_id.to_string()),
+                ("username", username.unwrap_or("—").to_string()),
+                ("display_name", display_name.unwrap_or("—").to_string()),
+            ],
+        )
     }
 
     pub fn admin_notify_new_request_text(&self, req: &crate::db::RegistrationRequest) -> String {
@@ -1197,6 +1244,41 @@ mod tests {
         assert_eq!(default.secret_mode, WebSecretMode::Dd);
         assert_eq!(default.base_path, None);
         assert_eq!(default.link_scheme, WebLinkScheme::Tg);
+    }
+
+    #[test]
+    fn feedback_texts_use_defaults_and_template() {
+        let mut messages = BotMessages::default();
+        assert!(
+            messages
+                .feedback_prompt_or_default()
+                .starts_with("Напишите")
+        );
+        assert!(
+            messages
+                .feedback_sent_or_default()
+                .starts_with("Сообщение отправлено")
+        );
+        assert_eq!(
+            messages.feedback_reply_header_or_default(),
+            "💬 Ответ администратора:"
+        );
+        assert_eq!(
+            messages.admin_feedback_text(42, None, Some("Иван")),
+            "✉️ Обратная связь\n User ID: 42\n Username: @—\n Имя: Иван"
+        );
+
+        messages.feedback_sent = Some("  ".to_string());
+        messages.admin_feedback_template = Some("FB {user_id} @{username}".to_string());
+        assert!(
+            messages
+                .feedback_sent_or_default()
+                .starts_with("Сообщение отправлено")
+        );
+        assert_eq!(
+            messages.admin_feedback_text(7, Some("nick"), None),
+            "FB 7 @nick"
+        );
     }
 
     #[test]

@@ -67,6 +67,12 @@ pub enum CallbackAction {
     ShowUserLink,
     ShowUsageGuide,
     PromptInviteToken,
+    /// Пользователь пишет сообщение администратору (обратная связь).
+    PromptFeedback,
+    /// Администратор отвечает пользователю на сообщение обратной связи.
+    PromptFeedbackReply {
+        tg_user_id: i64,
+    },
     CancelWizard,
     ShowPendingRequests,
     ShowPendingRequestsPage {
@@ -192,6 +198,10 @@ impl CallbackAction {
             Self::ShowUserLink => "v1|user|link".to_string(),
             Self::ShowUsageGuide => "v1|user|guide".to_string(),
             Self::PromptInviteToken => "v1|user|invite".to_string(),
+            Self::PromptFeedback => "v1|user|feedback".to_string(),
+            Self::PromptFeedbackReply { tg_user_id } => {
+                format!("v1|admin|feedback|reply|{tg_user_id}")
+            }
             Self::CancelWizard => "v1|wizard|cancel".to_string(),
             Self::ShowPendingRequests => "v1|admin|pending".to_string(),
             Self::ShowPendingRequestsPage { page } => format!("v1|admin|pending|page|{page}"),
@@ -298,6 +308,10 @@ impl CallbackAction {
             ["v1", "user", "link"] => Some(Self::ShowUserLink),
             ["v1", "user", "guide"] => Some(Self::ShowUsageGuide),
             ["v1", "user", "invite"] => Some(Self::PromptInviteToken),
+            ["v1", "user", "feedback"] => Some(Self::PromptFeedback),
+            ["v1", "admin", "feedback", "reply", tg_user_id] => Some(Self::PromptFeedbackReply {
+                tg_user_id: parse_i64(tg_user_id)?,
+            }),
             ["v1", "wizard", "cancel"] => Some(Self::CancelWizard),
             ["v1", "admin", "pending"] => Some(Self::ShowPendingRequests),
             ["v1", "admin", "pending", "page", page] => Some(Self::ShowPendingRequestsPage {
@@ -530,6 +544,10 @@ mod tests {
             },
             CallbackAction::PromptImportUser,
             CallbackAction::PromptBroadcastApproved,
+            CallbackAction::PromptFeedback,
+            CallbackAction::PromptFeedbackReply {
+                tg_user_id: 5_000_000_001,
+            },
         ];
 
         for case in cases {
@@ -558,6 +576,7 @@ mod tests {
         assert_eq!(CallbackAction::decode("v1|admin|service|confirm|bad"), None);
         assert_eq!(CallbackAction::decode("v1|admin|user|limit|bad|1|2"), None);
         assert_eq!(CallbackAction::decode("v1|admin|pending|open|abc|2"), None);
+        assert_eq!(CallbackAction::decode("v1|admin|feedback|reply|x"), None);
         assert_eq!(CallbackAction::decode("v2|admin|home"), None);
         assert_eq!(CallbackAction::decode("garbage"), None);
     }

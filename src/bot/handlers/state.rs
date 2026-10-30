@@ -9,6 +9,16 @@ use teloxide::types::Message;
 #[derive(Clone, Debug)]
 pub enum WizardState {
     AwaitingInviteToken,
+    /// Сообщение обратной связи для администраторов. `media_group_id` задан, когда первое
+    /// сообщение альбома уже отправлено: остальные части того же альбома идут следом.
+    UserFeedback {
+        media_group_id: Option<String>,
+    },
+    /// Ответ администратора пользователю на обратную связь (альбом — как в `UserFeedback`).
+    AdminFeedbackReply {
+        tg_user_id: i64,
+        media_group_id: Option<String>,
+    },
     AdminDeleteAwaitingTarget,
     AdminFindUserAwaitingTarget {
         page: i64,
@@ -40,6 +50,17 @@ impl WizardState {
     fn encode(&self) -> String {
         match self {
             Self::AwaitingInviteToken => "awaiting_invite_token".to_string(),
+            Self::UserFeedback { media_group_id } => match media_group_id {
+                Some(group) => format!("user_feedback:{group}"),
+                None => "user_feedback".to_string(),
+            },
+            Self::AdminFeedbackReply {
+                tg_user_id,
+                media_group_id,
+            } => match media_group_id {
+                Some(group) => format!("admin_feedback_reply:{tg_user_id}:{group}"),
+                None => format!("admin_feedback_reply:{tg_user_id}"),
+            },
             Self::AdminDeleteAwaitingTarget => "admin_delete_awaiting_target".to_string(),
             Self::AdminFindUserAwaitingTarget { page } => {
                 format!("admin_find_user:{}", (*page).max(1))
@@ -75,6 +96,9 @@ impl WizardState {
     fn decode(value: &str) -> Option<Self> {
         match value {
             "awaiting_invite_token" => Some(Self::AwaitingInviteToken),
+            "user_feedback" => Some(Self::UserFeedback {
+                media_group_id: None,
+            }),
             "admin_delete_awaiting_target" => Some(Self::AdminDeleteAwaitingTarget),
             "admin_token_create:auto" => {
                 Some(Self::AdminTokenCreateAwaitingParams { auto_approve: true })
@@ -86,6 +110,23 @@ impl WizardState {
             "admin_group_awaiting_name" => Some(Self::AdminGroupAwaitingName),
             "admin_import_awaiting_tg_id" => Some(Self::AdminImportAwaitingTgId),
             _ => {
+                if let Some(group) = value.strip_prefix("user_feedback:") {
+                    return Some(Self::UserFeedback {
+                        media_group_id: Some(group.to_string()).filter(|g| !g.is_empty()),
+                    });
+                }
+                if let Some(value) = value.strip_prefix("admin_feedback_reply:") {
+                    let (tg_user_id, group) = match value.split_once(':') {
+                        Some((id, group)) => {
+                            (id, Some(group.to_string()).filter(|g| !g.is_empty()))
+                        }
+                        None => (value, None),
+                    };
+                    return Some(Self::AdminFeedbackReply {
+                        tg_user_id: tg_user_id.parse::<i64>().ok()?,
+                        media_group_id: group,
+                    });
+                }
                 if let Some(value) = value.strip_prefix("admin_group_expiry:") {
                     return Some(Self::AdminGroupExpiryAwaitingValue {
                         group_id: value.parse::<i64>().ok()?,
@@ -186,4 +227,55 @@ pub async fn set_wizard_state(
 pub async fn clear_wizard_state(state: &BotState, user_id: i64) -> Result<(), anyhow::Error> {
     state.db.clear_wizard_state(user_id).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WizardState;
+
+    fn roundtrip(state: WizardState) -> Option<WizardState> {
+        WizardState::decode(&state.encode())
+    }
+
+    #[test]
+    fn feedback_states_roundtrip() {
+        assert!(matches!(
+            roundtrip(WizardState::UserFeedback {
+                media_group_id: None
+            }),
+            Some(WizardState::UserFeedback {
+                media_group_id: None
+            })
+        ));
+        assert!(matches!(
+            roundtrip(WizardState::UserFeedback {
+                media_group_id: Some("13579".to_string())
+            }),
+            Some(WizardState::UserFeedback { media_group_id: Some(group) }) if group == "13579"
+        ));
+        assert!(matches!(
+            roundtrip(WizardState::AdminFeedbackReply {
+                tg_user_id: 42,
+                media_group_id: None
+            }),
+            Some(WizardState::AdminFeedbackReply {
+                tg_user_id: 42,
+                media_group_id: None
+            })
+        ));
+        assert!(matches!(
+            roundtrip(WizardState::AdminFeedbackReply {
+                tg_user_id: 42,
+                media_group_id: Some("777".to_string())
+            }),
+            Some(WizardState::AdminFeedbackReply { tg_user_id: 42, media_group_id: Some(group) })
+                if group == "777"
+        ));
+    }
+
+    #[test]
+    fn feedback_reply_state_rejects_bad_user_id() {
+        assert!(WizardState::decode("admin_feedback_reply:abc").is_none());
+        assert!(WizardState::decode("admin_feedback_reply:").is_none());
+    }
 }

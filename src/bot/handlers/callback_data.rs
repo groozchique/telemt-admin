@@ -67,6 +67,8 @@ pub enum CallbackAction {
     ShowUserLink,
     ShowUsageGuide,
     PromptInviteToken,
+    /// Экран с текстом пожертвования из `[bot_messages] donation_text`.
+    ShowDonation,
     /// Пользователь пишет сообщение администратору (обратная связь).
     PromptFeedback,
     /// Администратор отвечает пользователю на сообщение обратной связи.
@@ -198,6 +200,7 @@ impl CallbackAction {
             Self::ShowUserLink => "v1|user|link".to_string(),
             Self::ShowUsageGuide => "v1|user|guide".to_string(),
             Self::PromptInviteToken => "v1|user|invite".to_string(),
+            Self::ShowDonation => "v1|user|donation".to_string(),
             Self::PromptFeedback => "v1|user|feedback".to_string(),
             Self::PromptFeedbackReply { tg_user_id } => {
                 format!("v1|admin|feedback|reply|{tg_user_id}")
@@ -308,6 +311,7 @@ impl CallbackAction {
             ["v1", "user", "link"] => Some(Self::ShowUserLink),
             ["v1", "user", "guide"] => Some(Self::ShowUsageGuide),
             ["v1", "user", "invite"] => Some(Self::PromptInviteToken),
+            ["v1", "user", "donation"] => Some(Self::ShowDonation),
             ["v1", "user", "feedback"] => Some(Self::PromptFeedback),
             ["v1", "admin", "feedback", "reply", tg_user_id] => Some(Self::PromptFeedbackReply {
                 tg_user_id: parse_i64(tg_user_id)?,
@@ -544,6 +548,7 @@ mod tests {
             },
             CallbackAction::PromptImportUser,
             CallbackAction::PromptBroadcastApproved,
+            CallbackAction::ShowDonation,
             CallbackAction::PromptFeedback,
             CallbackAction::PromptFeedbackReply {
                 tg_user_id: 5_000_000_001,

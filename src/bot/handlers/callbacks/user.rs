@@ -1,7 +1,9 @@
 use super::common::{ack_callback, replace_wizard_state};
 use crate::bot::handlers::actions::{send_user_link, try_auto_import_remote_user_by_tg_id};
 use crate::bot::handlers::callback_data::CallbackAction;
-use crate::bot::handlers::screens::{show_admin_home, show_usage_guide, show_user_home};
+use crate::bot::handlers::screens::{
+    show_admin_home, show_donation, show_usage_guide, show_user_home,
+};
 use crate::bot::handlers::shared::callback_message_target;
 use crate::bot::handlers::state::{BotState, WizardState, clear_wizard_state};
 use teloxide::payloads::SendMessageSetters;
@@ -77,6 +79,19 @@ pub async fn handle_user_action(
                         .invite_followup_prompt_or_default(),
                 )
                 .await?;
+            }
+            Ok(true)
+        }
+        CallbackAction::ShowDonation => {
+            if let Some((chat_id, message_id)) = callback_message_target(q) {
+                if show_donation(bot, chat_id, Some(message_id), state).await? {
+                    ack_callback(bot, q.id.clone(), None, false).await?;
+                } else {
+                    // Кнопка из старого сообщения, а `donation_text` уже убран из конфига.
+                    ack_callback(bot, q.id.clone(), Some("Раздел недоступен"), false).await?;
+                    let user_id = q.from.id.0 as i64;
+                    show_user_home(bot, chat_id, Some(message_id), state, user_id).await?;
+                }
             }
             Ok(true)
         }

@@ -83,7 +83,10 @@ pub async fn show_user_home(
         chat_id,
         message_id,
         text,
-        crate::bot::keyboards::user_home_keyboard(has_access),
+        crate::bot::keyboards::user_home_keyboard(
+            has_access,
+            state.config.bot_messages.donation_text().is_some(),
+        ),
     )
     .await
 }
@@ -106,4 +109,25 @@ pub async fn show_usage_guide(
         crate::bot::keyboards::guide_keyboard(),
     )
     .await
+}
+
+/// Экран пожертвования; `false`, если `donation_text` не задан.
+pub async fn show_donation(
+    bot: &Bot,
+    chat_id: ChatId,
+    message_id: Option<MessageId>,
+    state: &BotState,
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    let Some(text) = state.config.bot_messages.donation_text() else {
+        return Ok(false);
+    };
+    upsert_screen(
+        bot,
+        chat_id,
+        message_id,
+        text.to_string(),
+        crate::bot::keyboards::guide_keyboard(),
+    )
+    .await?;
+    Ok(true)
 }

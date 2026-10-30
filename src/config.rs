@@ -311,6 +311,9 @@ pub struct BotMessages {
     /// Шаблон заголовка обратной связи для админов.
     #[serde(default)]
     pub admin_feedback_template: Option<String>,
+    /// Текст по кнопке «Пожертвование»; пусто — кнопка не показывается.
+    #[serde(default)]
+    pub donation_text: Option<String>,
 }
 
 impl BotMessages {
@@ -553,6 +556,11 @@ impl BotMessages {
     pub fn token_error_usage_limit_or_default(&self) -> &str {
         const DEFAULT: &str = "Лимит активаций invite-токена исчерпан.";
         Self::non_empty(self.token_error_usage_limit.as_deref()).unwrap_or(DEFAULT)
+    }
+
+    /// Текст пожертвования или `None`, если раздел не настроен.
+    pub fn donation_text(&self) -> Option<&str> {
+        Self::non_empty(self.donation_text.as_deref())
     }
 
     pub fn feedback_prompt_or_default(&self) -> &str {
@@ -1244,6 +1252,16 @@ mod tests {
         assert_eq!(default.secret_mode, WebSecretMode::Dd);
         assert_eq!(default.base_path, None);
         assert_eq!(default.link_scheme, WebLinkScheme::Tg);
+    }
+
+    #[test]
+    fn donation_text_is_absent_when_empty() {
+        let mut messages = BotMessages::default();
+        assert_eq!(messages.donation_text(), None);
+        messages.donation_text = Some(" \n ".to_string());
+        assert_eq!(messages.donation_text(), None);
+        messages.donation_text = Some(" Карта: 0000 ".to_string());
+        assert_eq!(messages.donation_text(), Some("Карта: 0000"));
     }
 
     #[test]

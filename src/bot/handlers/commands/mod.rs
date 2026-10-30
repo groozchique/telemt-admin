@@ -291,7 +291,10 @@ async fn start_cmd(bot: Bot, msg: Message, state: BotState) -> HandlerResult {
     {
         clear_wizard_state(&state, user_id).await?;
         bot.send_message(msg.chat.id, stub)
-            .reply_markup(crate::bot::keyboards::user_home_keyboard(false))
+            .reply_markup(crate::bot::keyboards::user_home_keyboard(
+                false,
+                state.config.bot_messages.donation_text().is_some(),
+            ))
             .await?;
         return Ok(());
     }

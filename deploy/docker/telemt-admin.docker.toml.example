@@ -76,3 +76,10 @@ allow_auto_approve_tokens = true
 # feedback_sent = "Сообщение отправлено администратору. Ответ придёт в этот чат."
 # feedback_reply_header = "💬 Ответ администратора:"
 # admin_feedback_template = "✉️ Обратная связь\n User ID: {user_id}\n Username: @{username}\n Имя: {display_name}"
+# Кнопка «💝 Пожертвование» появляется у пользователей, только если задан donation_text.
+# donation_text = """
+# Спасибо, что поддерживаете проект!
+#
+# Карта: 0000 0000 0000 0000
+# Ссылка: https://example.com/donate
+# """

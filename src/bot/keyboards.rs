@@ -59,7 +59,15 @@ pub fn approve_reject_buttons(request_id: i64) -> InlineKeyboardMarkup {
     ])
 }
 
-pub fn user_home_keyboard(has_access: bool) -> InlineKeyboardMarkup {
+/// `show_donation` — показывать кнопку «Пожертвование» (задан `donation_text`).
+pub fn user_home_keyboard(has_access: bool, show_donation: bool) -> InlineKeyboardMarkup {
+    let mut support_row = vec![feedback_button()];
+    if show_donation {
+        support_row.push(InlineKeyboardButton::callback(
+            "💝 Пожертвование",
+            CallbackAction::ShowDonation.encode(),
+        ));
+    }
     if has_access {
         InlineKeyboardMarkup::new(vec![
             vec![
@@ -72,7 +80,7 @@ pub fn user_home_keyboard(has_access: bool) -> InlineKeyboardMarkup {
                     CallbackAction::ShowUsageGuide.encode(),
                 ),
             ],
-            vec![feedback_button()],
+            support_row,
             vec![InlineKeyboardButton::callback(
                 "🔄 Обновить статус",
                 CallbackAction::ShowUserHome.encode(),
@@ -88,7 +96,7 @@ pub fn user_home_keyboard(has_access: bool) -> InlineKeyboardMarkup {
                 "🔗 Получить ссылку",
                 CallbackAction::ShowUserLink.encode(),
             )],
-            vec![feedback_button()],
+            support_row,
             vec![InlineKeyboardButton::callback(
                 "🔄 Обновить статус",
                 CallbackAction::ShowUserHome.encode(),
@@ -735,4 +743,29 @@ pub fn confirm_user_ban_keyboard(tg_user_id: i64, page: i64) -> InlineKeyboardMa
             CallbackAction::OpenUserCard { tg_user_id, page }.encode(),
         ),
     ]])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::user_home_keyboard;
+    use crate::bot::handlers::callback_data::CallbackAction;
+    use teloxide::types::{InlineKeyboardButtonKind, InlineKeyboardMarkup};
+
+    fn has_action(keyboard: &InlineKeyboardMarkup, action: &CallbackAction) -> bool {
+        let encoded = action.encode();
+        keyboard.inline_keyboard.iter().flatten().any(|button| {
+            matches!(&button.kind, InlineKeyboardButtonKind::CallbackData(data) if *data == encoded)
+        })
+    }
+
+    #[test]
+    fn user_home_shows_donation_only_when_configured() {
+        for has_access in [true, false] {
+            let without = user_home_keyboard(has_access, false);
+            let with = user_home_keyboard(has_access, true);
+            assert!(!has_action(&without, &CallbackAction::ShowDonation));
+            assert!(has_action(&with, &CallbackAction::ShowDonation));
+            assert!(has_action(&without, &CallbackAction::PromptFeedback));
+        }
+    }
 }

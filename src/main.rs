@@ -12,6 +12,7 @@ mod service;
 mod telemt_backend;
 mod telemt_cfg;
 mod update;
+mod user_notifications;
 mod webapp;
 
 use clap::Parser;
@@ -160,6 +161,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         bot_username,
     };
     monitor::spawn_monitor(bot.clone(), state.clone());
+    user_notifications::spawn(bot.clone(), state.clone());
     webapp::start(&bot, state.clone(), token).await;
     tracing::info!("Dispatcher initialized, bot is ready");
 

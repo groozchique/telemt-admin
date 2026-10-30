@@ -5,8 +5,10 @@ use crate::bot::handlers::state::BotState;
 use crate::db::UserGroup;
 use crate::telemt_backend::TelemtUserPatch;
 use chrono::{TimeZone, Utc};
+use teloxide::prelude::Bot;
 
 pub async fn deactivate_all_members(
+    bot: &Bot,
     state: &BotState,
     group: &UserGroup,
 ) -> Result<(usize, usize), anyhow::Error> {
@@ -14,7 +16,7 @@ pub async fn deactivate_all_members(
     let mut ok = 0usize;
     let mut err = 0usize;
     for tg_user_id in ids {
-        match perform_hard_ban(state, tg_user_id).await {
+        match perform_hard_ban(bot, state, tg_user_id).await {
             Ok(_) => ok += 1,
             Err(e) => {
                 err += 1;

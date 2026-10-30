@@ -122,7 +122,7 @@ button.btn.secondary { background: var(--bg2); color: var(--link); }
 button.btn.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
 button.btn:disabled { opacity: .5; cursor: default; }
 
-input, select {
+input, select, textarea {
   width: 100%;
   padding: 9px 10px;
   border: 1px solid var(--bg2);
@@ -131,6 +131,11 @@ input, select {
   color: var(--text);
   font: inherit;
 }
+
+textarea { resize: vertical; min-height: 88px; }
+.prewrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.warn { color: var(--warn); }
+.limits p { margin: 4px 0; }
 
 label { display: block; font-size: 13px; color: var(--hint); margin: 10px 0 4px; }
 label.check { display: flex; gap: 8px; align-items: center; color: var(--text); font-size: 15px; }

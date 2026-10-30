@@ -22,9 +22,11 @@ mod state;
 pub use state::BotState;
 
 // Доменные операции, которые переиспользует Mini App (`src/webapp`).
-pub(crate) use actions::{approve_request_and_build_link, perform_hard_ban};
+pub(crate) use actions::{
+    approve_request_and_build_link, feedback_cooldown_text, perform_hard_ban, send_text_feedback,
+};
 pub(crate) use shared::{build_bot_start_link, build_user_qr_png_bytes};
-pub(crate) use state::telemt_username;
+pub(crate) use state::{telemt_username, tg_id_from_telemt_username};
 
 use teloxide::dispatching::DpHandlerDescription;
 use teloxide::dptree;

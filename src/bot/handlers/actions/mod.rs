@@ -10,7 +10,10 @@ pub use access::{
     approve_request_and_build_link, perform_hard_ban, process_invite_token, send_user_link,
 };
 pub use broadcast::broadcast_to_approved_users;
-pub use feedback::{FeedbackStep, feedback_step, send_feedback_reply, send_user_feedback};
+pub use feedback::{
+    FeedbackStep, feedback_cooldown_text, feedback_step, send_feedback_reply, send_text_feedback,
+    send_user_feedback,
+};
 pub use service::{
     admin_show_connections_summary, admin_show_service_panel, admin_show_service_panel_with_notice,
     execute_service_action,

@@ -111,7 +111,7 @@ pub async fn handle(
             let Some(_) = require_admin_callback(bot, q, state).await? else {
                 return Ok(true);
             };
-            let status_text = perform_hard_ban(state, tg_user_id).await?;
+            let status_text = perform_hard_ban(bot, state, tg_user_id).await?;
             ack_callback(bot, q.id.clone(), Some(&status_text), false).await?;
             if let Some((chat_id, message_id)) = callback_message_target(q) {
                 bot.send_message(chat_id, status_text).await?;
@@ -143,7 +143,7 @@ pub async fn handle(
             let Some(_) = require_admin_callback(bot, q, state).await? else {
                 return Ok(true);
             };
-            let status_text = perform_hard_ban(state, tg_user_id).await?;
+            let status_text = perform_hard_ban(bot, state, tg_user_id).await?;
             ack_callback(bot, q.id.clone(), Some(&status_text), false).await?;
             if let Some((chat_id, message_id)) = callback_message_target(q) {
                 bot.edit_message_text(chat_id, message_id, status_text)

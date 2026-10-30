@@ -17,12 +17,12 @@ use super::api_dto::{
 use super::legacy::LegacyTelemtBackend;
 use super::mappers::{
     build_summary_from_user_list, map_api_user_info, map_connection_top_user, map_user_activity,
-    pick_best_link,
+    map_user_limits, pick_best_link,
 };
 use super::types::{
     DeleteUserResult, ProvisionedUser, TelemtApiError, TelemtBackendMode, TelemtConnectionsSummary,
     TelemtMonitorSnapshot, TelemtRuntimeEvent, TelemtRuntimeSnapshot, TelemtStatsSummary,
-    TelemtUserActivity, TelemtUserInfo, TelemtUserPatch, WebProfileTarget,
+    TelemtUserActivity, TelemtUserInfo, TelemtUserLimits, TelemtUserPatch, WebProfileTarget,
 };
 use super::web_profiles::{
     ReloadScheduler, RemovedProfile, patch_vhosts, restore_profiles, take_profiles, upsert_profile,
@@ -481,6 +481,10 @@ impl ApiTelemtBackend {
 
     pub(crate) async fn user_activity(&self) -> Result<Vec<TelemtUserActivity>, anyhow::Error> {
         Ok(map_user_activity(self.list_users().await?))
+    }
+
+    pub(crate) async fn user_limits(&self) -> Result<Vec<TelemtUserLimits>, anyhow::Error> {
+        Ok(map_user_limits(self.list_users().await?))
     }
 
     async fn list_users(&self) -> Result<Vec<ApiUserInfo>, anyhow::Error> {

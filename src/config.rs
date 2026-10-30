@@ -55,6 +55,91 @@ pub struct Config {
     /// Встроенное веб-приложение (Telegram Mini App)
     #[serde(default)]
     pub webapp: WebAppConfig,
+    /// Уведомления пользователям о сроке доступа и квоте трафика
+    #[serde(default)]
+    pub user_notifications: UserNotificationsConfig,
+}
+
+/// Фоновая проверка сроков и квот пользователей в telemt.
+#[derive(Debug, Clone, Deserialize)]
+pub struct UserNotificationsConfig {
+    #[serde(default = "default_user_notifications_enabled")]
+    pub enabled: bool,
+    /// Интервал проверки, секунды
+    #[serde(default = "default_user_notifications_interval_secs")]
+    pub check_interval_secs: u64,
+    /// За сколько дней до окончания срока предупреждать
+    #[serde(default = "default_expiry_warn_days")]
+    pub expiry_warn_days: Vec<u32>,
+    /// При каком проценте израсходованной квоты предупреждать; пусто — не предупреждать
+    #[serde(default = "default_quota_warn_percent")]
+    pub quota_warn_percent: Vec<u8>,
+}
+
+impl Default for UserNotificationsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_user_notifications_enabled(),
+            check_interval_secs: default_user_notifications_interval_secs(),
+            expiry_warn_days: default_expiry_warn_days(),
+            quota_warn_percent: default_quota_warn_percent(),
+        }
+    }
+}
+
+/// Выключено по умолчанию: после обновления бот не должен сам начать писать пользователям.
+fn default_user_notifications_enabled() -> bool {
+    false
+}
+
+fn default_user_notifications_interval_secs() -> u64 {
+    3_600
+}
+
+fn default_expiry_warn_days() -> Vec<u32> {
+    vec![3, 1]
+}
+
+fn default_quota_warn_percent() -> Vec<u8> {
+    vec![90]
+}
+
+/// Минимальный интервал проверки: чаще опрашивать `/v1/stats/users` незачем.
+const USER_NOTIFICATIONS_MIN_INTERVAL_SECS: u64 = 60;
+const EXPIRY_WARN_DAYS_RANGE: std::ops::RangeInclusive<u32> = 1..=365;
+const QUOTA_WARN_PERCENT_RANGE: std::ops::RangeInclusive<u8> = 1..=100;
+
+impl UserNotificationsConfig {
+    fn validate(&self) -> Result<(), anyhow::Error> {
+        if self.check_interval_secs < USER_NOTIFICATIONS_MIN_INTERVAL_SECS {
+            return Err(anyhow::anyhow!(
+                "user_notifications.check_interval_secs должен быть не меньше {USER_NOTIFICATIONS_MIN_INTERVAL_SECS} секунд"
+            ));
+        }
+        if let Some(days) = self
+            .expiry_warn_days
+            .iter()
+            .find(|d| !EXPIRY_WARN_DAYS_RANGE.contains(d))
+        {
+            return Err(anyhow::anyhow!(
+                "user_notifications.expiry_warn_days: {days} вне диапазона {}..{}",
+                EXPIRY_WARN_DAYS_RANGE.start(),
+                EXPIRY_WARN_DAYS_RANGE.end()
+            ));
+        }
+        if let Some(percent) = self
+            .quota_warn_percent
+            .iter()
+            .find(|p| !QUOTA_WARN_PERCENT_RANGE.contains(p))
+        {
+            return Err(anyhow::anyhow!(
+                "user_notifications.quota_warn_percent: {percent} вне диапазона {}..{}",
+                QUOTA_WARN_PERCENT_RANGE.start(),
+                QUOTA_WARN_PERCENT_RANGE.end()
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Настройки Telegram Mini App: встроенный HTTP-сервер за TLS-терминатором.
@@ -329,6 +414,18 @@ pub struct BotMessages {
     /// Текст по кнопке «Пожертвование»; пусто — кнопка не показывается.
     #[serde(default)]
     pub donation_text: Option<String>,
+    /// Уведомление пользователю, что администратор удалил его доступ.
+    #[serde(default)]
+    pub access_revoked_text: Option<String>,
+    /// Уведомление, что срок доступа истёк; `{expires_at}`, `{days_left}`, `{used}`, `{quota}`.
+    #[serde(default)]
+    pub access_expired_text: Option<String>,
+    /// Предупреждение о скором окончании срока; те же плейсхолдеры.
+    #[serde(default)]
+    pub access_expiring_text: Option<String>,
+    /// Предупреждение о расходе квоты трафика; те же плейсхолдеры.
+    #[serde(default)]
+    pub quota_warning_text: Option<String>,
 }
 
 impl BotMessages {
@@ -576,6 +673,29 @@ impl BotMessages {
     /// Текст пожертвования или `None`, если раздел не настроен.
     pub fn donation_text(&self) -> Option<&str> {
         Self::non_empty(self.donation_text.as_deref())
+    }
+
+    pub fn access_revoked_or_default(&self) -> &str {
+        const DEFAULT: &str = "Ваш доступ к прокси отозван администратором.\n\nЕсли это ошибка, напишите администратору через «Обратная связь» в /start.";
+        Self::non_empty(self.access_revoked_text.as_deref()).unwrap_or(DEFAULT)
+    }
+
+    /// Уведомление об окончании срока доступа.
+    pub fn access_expired_text(&self, vars: &[(&str, String)]) -> String {
+        const DEFAULT: &str = "⛔ Срок вашего доступа к прокси истёк {expires_at}.\n\nЧтобы продлить доступ, напишите администратору через «Обратная связь» в /start.";
+        Self::render_template(self.access_expired_text.as_deref(), DEFAULT, vars)
+    }
+
+    /// Предупреждение, что срок доступа скоро закончится.
+    pub fn access_expiring_text(&self, vars: &[(&str, String)]) -> String {
+        const DEFAULT: &str = "⏳ Доступ к прокси закончится {expires_at} (осталось дней: {days_left}).\n\nЧтобы продлить доступ, напишите администратору через «Обратная связь» в /start.";
+        Self::render_template(self.access_expiring_text.as_deref(), DEFAULT, vars)
+    }
+
+    /// Предупреждение о расходе квоты трафика.
+    pub fn quota_warning_text(&self, vars: &[(&str, String)]) -> String {
+        const DEFAULT: &str = "📊 Израсходовано {used} из {quota} трафика.\n\nКогда квота закончится, прокси перестанет работать. Чтобы увеличить квоту, напишите администратору через «Обратная связь» в /start.";
+        Self::render_template(self.quota_warning_text.as_deref(), DEFAULT, vars)
     }
 
     pub fn feedback_prompt_or_default(&self) -> &str {
@@ -881,6 +1001,7 @@ impl Config {
                 "notifications.health_check_interval_secs должен быть положительным"
             ));
         }
+        config.user_notifications.validate()?;
         for warning in config.validate_web_sections()? {
             tracing::warn!("{warning}");
         }
@@ -1086,6 +1207,7 @@ mod tests {
             runtime: None,
             web_proxy: WebProxyConfig::default(),
             webapp: WebAppConfig::default(),
+            user_notifications: super::UserNotificationsConfig::default(),
         }
     }
 

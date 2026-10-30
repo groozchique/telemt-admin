@@ -268,6 +268,60 @@
     return box;
   }
 
+  /// Срок и трафик доступа; показываются только заданные лимиты.
+  function limitsBlock(limits) {
+    if (!limits) return null;
+    const rows = [];
+    if (limits.expires_at) {
+      rows.push(limits.days_left > 0
+        ? el("p", { class: limits.days_left <= 3 ? "warn" : "" },
+          `Доступ до ${fmtDate(limits.expires_at)} · осталось дней: ${limits.days_left}`)
+        : el("p", { class: "danger" }, `Срок доступа истёк ${fmtDate(limits.expires_at)}`));
+    }
+    if (limits.quota_bytes) {
+      const percent = Math.floor(limits.used_bytes * 100 / limits.quota_bytes);
+      rows.push(el("p", { class: percent >= 90 ? "warn" : "" },
+        `Трафик: ${fmtBytes(limits.used_bytes)} из ${fmtBytes(limits.quota_bytes)} (${percent}%)`));
+    }
+    return rows.length ? el("div", { class: "limits" }, rows) : null;
+  }
+
+  const FEEDBACK_MAX_CHARS = 3000;
+
+  function feedbackCard() {
+    const card = el("div", { class: "card" }, el("h2", {}, "Обратная связь"));
+    const input = el("textarea", { id: "feedback-text", rows: 4, maxlength: FEEDBACK_MAX_CHARS, placeholder: "Ваше сообщение" });
+    const send = el("button", { class: "btn", onclick: async () => {
+      const text = input.value.trim();
+      if (!text) { toast("Напишите сообщение"); return; }
+      send.disabled = true;
+      try {
+        const result = await api("/api/feedback", { method: "POST", body: { text } });
+        input.value = "";
+        haptic("success");
+        toast(result.message);
+      } catch (e) {
+        haptic("error");
+        toast(e.message);
+      } finally {
+        send.disabled = false;
+      }
+    } }, "Отправить");
+    card.append(
+      el("p", { class: "muted small" }, "Сообщение получит администратор, ответ придёт в чат с ботом. Фото и файлы можно отправить кнопкой «✉️ Обратная связь» в чате с ботом."),
+      el("label", { for: "feedback-text" }, "Сообщение"),
+      input,
+      el("div", { class: "row" }, send));
+    return card;
+  }
+
+  function donationCard() {
+    if (!me.donation_text) return null;
+    return el("div", { class: "card" },
+      el("h2", {}, "Пожертвование"),
+      el("p", { class: "prewrap" }, me.donation_text));
+  }
+
   function showAccess() {
     const card = el("div", { class: "card" });
     const hello = me.name ? `${me.name}` : "Здравствуйте";
@@ -275,6 +329,8 @@
 
     if (me.access === "approved") {
       card.append(el("p", {}, el("span", { class: "badge ok" }, "Доступ открыт")));
+      const limits = limitsBlock(me.limits);
+      if (limits) card.append(limits);
       if (me.links) {
         card.append(linkBlock("Обычный прокси", me.links.native, "native",
           "Для телефона и компьютера. Нажмите «Подключить» и подтвердите добавление прокси."));
@@ -285,7 +341,7 @@
       } else {
         card.append(el("p", { class: "danger" }, me.links_error || "Ссылка временно недоступна"));
       }
-      render(card, instructionsCard());
+      render(card, instructionsCard(), feedbackCard(), donationCard());
       return;
     }
 
@@ -293,7 +349,7 @@
       card.append(
         el("p", {}, el("span", { class: "badge warn" }, "Заявка на рассмотрении")),
         el("p", { class: "muted" }, "Администратор получил вашу заявку. Ссылка придёт в чат с ботом после одобрения."));
-      render(card);
+      render(card, feedbackCard(), donationCard());
       return;
     }
 
@@ -316,7 +372,7 @@
       else window.location.href = url;
     } }, "Отправить боту");
     card.append(el("label", { for: "invite-token" }, "Пригласительный токен"), input, el("div", { class: "row" }, submit));
-    render(card);
+    render(card, feedbackCard(), donationCard());
   }
 
   function instructionsCard() {

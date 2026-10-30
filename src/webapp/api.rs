@@ -18,10 +18,12 @@ use super::AppState;
 use super::auth::{WebAppUser, validate_init_data};
 use crate::bot::handlers::{
     approve_request_and_build_link, build_bot_start_link, build_user_qr_png_bytes,
-    perform_hard_ban, telemt_username,
+    feedback_cooldown_text, perform_hard_ban, send_text_feedback, telemt_username,
+    tg_id_from_telemt_username,
 };
 use crate::db::{InviteToken, RegistrationRequest, RequestStatus};
 use crate::telemt_backend::TelemtUserActivity;
+use crate::user_notifications::AccessLimits;
 use std::collections::HashMap;
 
 const INDEX_HTML: &str = include_str!("assets/index.html");
@@ -49,6 +51,7 @@ pub fn router(app: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/api/me", get(me))
         .route("/api/me/qr", get(me_qr))
+        .route("/api/feedback", post(send_feedback))
         .route("/api/admin/summary", get(admin_summary))
         .route("/api/admin/requests", get(admin_requests))
         .route("/api/admin/requests/{id}/approve", post(admin_approve))
@@ -238,6 +241,30 @@ struct MeResponse {
     links_error: Option<String>,
     bot_username: Option<String>,
     web_proxy_host: Option<String>,
+    /// Срок и трафик; `None`, если ни срок, ни квота не заданы или telemt недоступен.
+    limits: Option<LimitsView>,
+    /// Текст для раздела «Пожертвование»; `None` — раздел скрыт.
+    donation_text: Option<String>,
+}
+
+#[derive(Serialize, Debug, PartialEq, Eq)]
+struct LimitsView {
+    /// Unix-время окончания доступа.
+    expires_at: Option<i64>,
+    days_left: Option<i64>,
+    used_bytes: u64,
+    quota_bytes: Option<u64>,
+}
+
+impl LimitsView {
+    fn from_limits(limits: &AccessLimits, now: chrono::DateTime<chrono::Utc>) -> Option<Self> {
+        (limits.expires_at.is_some() || limits.quota_bytes.is_some()).then(|| Self {
+            expires_at: limits.expires_at.map(|dt| dt.timestamp()),
+            days_left: limits.days_left(now),
+            used_bytes: limits.used_bytes,
+            quota_bytes: limits.quota_bytes,
+        })
+    }
 }
 
 /// Текущая активность пользователя в telemt (без IP-адресов).
@@ -288,15 +315,6 @@ fn online_sorted(activity: &[TelemtUserActivity]) -> Vec<&TelemtUserActivity> {
             .then(a.username.cmp(&b.username))
     });
     online
-}
-
-/// `tg_<id>` → `id`.
-fn tg_id_from_telemt_username(username: &str) -> Option<i64> {
-    let digits = username.strip_prefix("tg_")?;
-    let canonical = !digits.is_empty()
-        && !digits.starts_with('0')
-        && digits.bytes().all(|b| b.is_ascii_digit());
-    canonical.then(|| digits.parse().ok()).flatten()
 }
 
 #[derive(Serialize)]
@@ -494,7 +512,7 @@ async fn me(State(app): State<AppState>, headers: HeaderMap) -> ApiResult<MeResp
         .map_err(ApiError::internal)?;
     let access = request.as_ref().map_or("none", |r| status_str(r.status));
 
-    let (links, links_error) = match app
+    let (links, links_error, limits) = match app
         .state
         .db
         .get_approved(user.id)
@@ -503,12 +521,17 @@ async fn me(State(app): State<AppState>, headers: HeaderMap) -> ApiResult<MeResp
     {
         Some((telemt_user, secret)) => {
             let secret = (!secret.is_empty()).then_some(secret.as_str());
-            match user_links(&app, &telemt_user, secret).await {
-                Ok(links) => (Some(links), None),
-                Err(error) => (None, Some(error)),
+            // Ссылки и срок с трафиком — независимые запросы к telemt.
+            let (links, limits) = tokio::join!(
+                user_links(&app, &telemt_user, secret),
+                user_limits(&app, &telemt_user, secret),
+            );
+            match links {
+                Ok(links) => (Some(links), None, limits),
+                Err(error) => (None, Some(error), limits),
             }
         }
-        None => (None, None),
+        None => (None, None, None),
     };
 
     Ok(Json(MeResponse {
@@ -521,6 +544,95 @@ async fn me(State(app): State<AppState>, headers: HeaderMap) -> ApiResult<MeResp
         links_error,
         bot_username: app.state.bot_username.clone(),
         web_proxy_host: app.state.config.web_proxy.normalized_host(),
+        limits,
+        donation_text: app
+            .state
+            .config
+            .bot_messages
+            .donation_text()
+            .map(str::to_string),
+    }))
+}
+
+async fn user_limits(
+    app: &AppState,
+    telemt_user: &str,
+    secret: Option<&str>,
+) -> Option<LimitsView> {
+    match app
+        .state
+        .telemt_backend
+        .get_user_info(telemt_user, secret)
+        .await
+    {
+        Ok(info) => info.and_then(|info| {
+            LimitsView::from_limits(&AccessLimits::from_user_info(&info), chrono::Utc::now())
+        }),
+        Err(error) => {
+            tracing::warn!(telemt_user = %telemt_user, error = %error, "Mini App: failed to fetch expiry and traffic");
+            None
+        }
+    }
+}
+
+/// Лимит текста обратной связи: кириллица занимает 2 байта, а тело запроса ограничено 8 КБ.
+const FEEDBACK_MAX_CHARS: usize = 3_000;
+
+#[derive(Deserialize)]
+struct FeedbackRequest {
+    text: String,
+}
+
+fn validate_feedback_text(text: &str) -> Result<&str, &'static str> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err("Напишите сообщение");
+    }
+    if text.chars().count() > FEEDBACK_MAX_CHARS {
+        return Err("Сообщение слишком длинное");
+    }
+    Ok(text)
+}
+
+async fn send_feedback(
+    State(app): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> ApiResult<Done> {
+    let user = authenticate(&app, &headers)?;
+    let request: FeedbackRequest = serde_json::from_slice(&body)
+        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Некорректное сообщение"))?;
+    let text = validate_feedback_text(&request.text)
+        .map_err(|error| ApiError::new(StatusCode::BAD_REQUEST, error))?;
+    let delivered = send_text_feedback(
+        &app.bot,
+        &app.state,
+        user.id,
+        user.username.as_deref(),
+        user.display_name().as_deref(),
+        text,
+    )
+    .await
+    .map_err(|wait_secs| {
+        ApiError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            feedback_cooldown_text(wait_secs),
+        )
+    })?;
+    if delivered == 0 {
+        return Err(ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            "Не удалось передать сообщение администратору, попробуйте позже",
+        ));
+    }
+    Ok(Json(Done {
+        ok: true,
+        message: app
+            .state
+            .config
+            .bot_messages
+            .feedback_sent_or_default()
+            .to_string(),
     }))
 }
 
@@ -874,7 +986,7 @@ async fn admin_delete_user(
             "Пользователь не найден",
         ));
     }
-    let message = perform_hard_ban(&app.state, tg_user_id)
+    let message = perform_hard_ban(&app.bot, &app.state, tg_user_id)
         .await
         .map_err(ApiError::internal)?;
     tracing::info!(
@@ -1010,7 +1122,8 @@ async fn admin_revoke_token(
 mod tests {
     use super::{
         Activity, CreateTokenRequest, OnlineSummary, init_data_from_header, online_sorted,
-        online_summary, page_window, tg_id_from_telemt_username, validate_token_request,
+        online_summary, page_window, tg_id_from_telemt_username, validate_feedback_text,
+        validate_token_request,
     };
     use crate::telemt_backend::TelemtUserActivity;
 
@@ -1071,6 +1184,14 @@ mod tests {
                 total_octets: 1
             }
         );
+    }
+
+    #[test]
+    fn validate_feedback_text_trims_and_limits_length() {
+        assert_eq!(validate_feedback_text("  привет \n"), Ok("привет"));
+        assert!(validate_feedback_text("   ").is_err());
+        assert!(validate_feedback_text(&"я".repeat(3_000)).is_ok());
+        assert!(validate_feedback_text(&"я".repeat(3_001)).is_err());
     }
 
     #[test]

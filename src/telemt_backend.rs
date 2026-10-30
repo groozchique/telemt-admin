@@ -28,7 +28,8 @@ use legacy::LegacyTelemtBackend;
 pub use types::{
     DeleteUserResult, ProvisionedUser, TelemtApiError, TelemtBackendMode, TelemtConnectionTopUser,
     TelemtConnectionsSummary, TelemtMonitorSnapshot, TelemtRuntimeEvent, TelemtRuntimeSnapshot,
-    TelemtStatsSummary, TelemtUserActivity, TelemtUserInfo, TelemtUserPatch, WebProfileTarget,
+    TelemtStatsSummary, TelemtUserActivity, TelemtUserInfo, TelemtUserLimits, TelemtUserPatch,
+    WebProfileTarget,
 };
 
 #[derive(Clone)]
@@ -161,6 +162,14 @@ impl TelemtBackend {
         match self.inner.as_ref() {
             TelemtBackendInner::Legacy(_) => Ok(None),
             TelemtBackendInner::Api(api) => api.user_activity().await.map(Some),
+        }
+    }
+
+    /// Сроки, квоты и трафик всех пользователей; `None` в legacy-режиме.
+    pub async fn user_limits(&self) -> Result<Option<Vec<TelemtUserLimits>>, anyhow::Error> {
+        match self.inner.as_ref() {
+            TelemtBackendInner::Legacy(_) => Ok(None),
+            TelemtBackendInner::Api(api) => api.user_limits().await.map(Some),
         }
     }
 

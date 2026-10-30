@@ -5,6 +5,7 @@ mod invite_tokens;
 mod migrations;
 mod registration;
 mod user_groups;
+mod user_notifications;
 mod wizard_state;
 
 use sqlx::FromRow;

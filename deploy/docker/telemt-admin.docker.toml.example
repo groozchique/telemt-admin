@@ -24,6 +24,13 @@ notify_on_health_change = true
 notify_on_runtime_alerts = true
 notify_on_new_request = true
 
+[user_notifications]
+# Предупреждать пользователей о сроке доступа и квоте трафика (нужен [telemt_api]; без секции выключено)
+enabled = true
+check_interval_secs = 3600
+expiry_warn_days = [3, 1]
+quota_warn_percent = [90]  # [] — не предупреждать о квоте
+
 [security]
 default_token_days = 14
 max_token_days = 180
@@ -78,6 +85,11 @@ allow_auto_approve_tokens = true
 # feedback_sent = "Сообщение отправлено администратору. Ответ придёт в этот чат."
 # feedback_reply_header = "💬 Ответ администратора:"
 # admin_feedback_template = "✉️ Обратная связь\n User ID: {user_id}\n Username: @{username}\n Имя: {display_name}"
+# access_revoked_text = "Ваш доступ к прокси отозван администратором."
+# Плейсхолдеры: {expires_at}, {days_left}, {used}, {quota}
+# access_expiring_text = "⏳ Доступ к прокси закончится {expires_at} (осталось дней: {days_left})."
+# access_expired_text = "⛔ Срок вашего доступа к прокси истёк {expires_at}."
+# quota_warning_text = "📊 Израсходовано {used} из {quota} трафика."
 # Кнопка «💝 Пожертвование» появляется у пользователей, только если задан donation_text.
 # donation_text = """
 # Спасибо, что поддерживаете проект!

@@ -6,6 +6,8 @@
 - `src/config.rs` — загрузка `telemt-admin.toml`, дефолты и валидация (в т.ч. `[bot_messages]`).
 - `src/env_config_overlay.rs` — whitelist overrides `TELEMT_ADMIN__*` поверх TOML.
 - `src/monitor.rs` — фоновый polling `telemt` control API и push-уведомления администраторам; дедупликация одинаковых алертов с интервалом 5 минут.
+- `src/user_notifications.rs` — фоновая проверка сроков и квот пользователей (`[user_notifications]`): расчёт порогов, уведомления пользователям, строки «срок / трафик» для `/link` и Mini App.
+- `src/db/user_notifications.rs` — отметки об отправленных уведомлениях о сроке и квоте (таблица `user_notifications`).
 - `src/db.rs` — корневой модуль SQLite-слоя с общими типами и публичным API.
 - `src/db/migrations.rs` — мягкие миграции схемы и bootstrap БД.
 - `src/db/registration.rs` — заявки, пользователи и переходы `pending/approved/rejected/deleted`.

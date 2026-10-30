@@ -101,6 +101,15 @@ pub struct TelemtUserActivity {
     pub total_octets: u64,
 }
 
+/// Срок, квота и израсходованный трафик пользователя telemt из списка пользователей.
+#[derive(Debug, Clone)]
+pub struct TelemtUserLimits {
+    pub username: String,
+    pub expiration_rfc3339: Option<String>,
+    pub data_quota_bytes: Option<u64>,
+    pub total_octets: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct TelemtConnectionsSummary {
     pub current_connections: u64,

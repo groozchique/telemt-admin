@@ -104,7 +104,7 @@ pub async fn handle(
                 return Ok(true);
             };
             ack_callback(bot, q.id.clone(), None, false).await?;
-            let (ok, err) = deactivate_all_members(state, &group).await?;
+            let (ok, err) = deactivate_all_members(bot, state, &group).await?;
             let groups = state.db.list_user_groups().await?;
             let text = format!(
                 "Отключено пользователей: {}, ошибок: {}. Группа «{}» удалена.",

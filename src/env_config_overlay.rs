@@ -137,6 +137,32 @@ pub fn apply(config: &mut Config) -> Result<Vec<String>, anyhow::Error> {
         applied.push("TELEMT_ADMIN__NOTIFICATIONS__NOTIFY_ON_NEW_REQUEST".to_string());
     }
 
+    if let Some(v) = read_nonempty("USER_NOTIFICATIONS__ENABLED") {
+        config.user_notifications.enabled = parse_bool(&v)?;
+        applied.push("TELEMT_ADMIN__USER_NOTIFICATIONS__ENABLED".to_string());
+    }
+
+    if let Some(v) = read_nonempty("USER_NOTIFICATIONS__CHECK_INTERVAL_SECS") {
+        config.user_notifications.check_interval_secs = v.trim().parse::<u64>().map_err(|_| {
+            anyhow::anyhow!(
+                "TELEMT_ADMIN__USER_NOTIFICATIONS__CHECK_INTERVAL_SECS: ожидается целое число секунд"
+            )
+        })?;
+        applied.push("TELEMT_ADMIN__USER_NOTIFICATIONS__CHECK_INTERVAL_SECS".to_string());
+    }
+
+    if let Some(v) = read_nonempty("USER_NOTIFICATIONS__EXPIRY_WARN_DAYS") {
+        config.user_notifications.expiry_warn_days =
+            parse_number_list(&v, "TELEMT_ADMIN__USER_NOTIFICATIONS__EXPIRY_WARN_DAYS")?;
+        applied.push("TELEMT_ADMIN__USER_NOTIFICATIONS__EXPIRY_WARN_DAYS".to_string());
+    }
+
+    if let Some(v) = read_nonempty("USER_NOTIFICATIONS__QUOTA_WARN_PERCENT") {
+        config.user_notifications.quota_warn_percent =
+            parse_number_list(&v, "TELEMT_ADMIN__USER_NOTIFICATIONS__QUOTA_WARN_PERCENT")?;
+        applied.push("TELEMT_ADMIN__USER_NOTIFICATIONS__QUOTA_WARN_PERCENT".to_string());
+    }
+
     if let Some(v) = read_nonempty("BOT_MESSAGES__START_WITHOUT_INVITE") {
         config.bot_messages.start_without_invite = Some(v);
         applied.push("TELEMT_ADMIN__BOT_MESSAGES__START_WITHOUT_INVITE".to_string());
@@ -297,6 +323,26 @@ pub fn apply(config: &mut Config) -> Result<Vec<String>, anyhow::Error> {
         applied.push("TELEMT_ADMIN__BOT_MESSAGES__ADMIN_ONLY_DEEP_LINK_TEXT".to_string());
     }
 
+    if let Some(v) = read_nonempty("BOT_MESSAGES__ACCESS_REVOKED_TEXT") {
+        config.bot_messages.access_revoked_text = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_MESSAGES__ACCESS_REVOKED_TEXT".to_string());
+    }
+
+    if let Some(v) = read_nonempty("BOT_MESSAGES__ACCESS_EXPIRED_TEXT") {
+        config.bot_messages.access_expired_text = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_MESSAGES__ACCESS_EXPIRED_TEXT".to_string());
+    }
+
+    if let Some(v) = read_nonempty("BOT_MESSAGES__ACCESS_EXPIRING_TEXT") {
+        config.bot_messages.access_expiring_text = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_MESSAGES__ACCESS_EXPIRING_TEXT".to_string());
+    }
+
+    if let Some(v) = read_nonempty("BOT_MESSAGES__QUOTA_WARNING_TEXT") {
+        config.bot_messages.quota_warning_text = Some(v);
+        applied.push("TELEMT_ADMIN__BOT_MESSAGES__QUOTA_WARNING_TEXT".to_string());
+    }
+
     if let Some(v) = read_nonempty("BOT_MESSAGES__USER_NOT_FOUND_TEXT") {
         config.bot_messages.user_not_found_text = Some(v);
         applied.push("TELEMT_ADMIN__BOT_MESSAGES__USER_NOT_FOUND_TEXT".to_string());
@@ -386,6 +432,21 @@ fn parse_bool(s: &str) -> Result<bool, anyhow::Error> {
     }
 }
 
+/// Список чисел через запятую; `none` — пустой список.
+fn parse_number_list<T: std::str::FromStr>(s: &str, key: &str) -> Result<Vec<T>, anyhow::Error> {
+    if s.trim().eq_ignore_ascii_case("none") {
+        return Ok(Vec::new());
+    }
+    s.split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            part.parse()
+                .map_err(|_| anyhow::anyhow!("{key}: неверное число «{part}»"))
+        })
+        .collect()
+}
+
 fn parse_admin_ids(s: &str) -> Result<Vec<i64>, anyhow::Error> {
     let mut out = Vec::new();
     for part in s.split(',') {
@@ -427,7 +488,7 @@ fn default_runtime_section() -> crate::config::RuntimeSection {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_admin_ids, parse_bool, parse_runtime_mode};
+    use super::{parse_admin_ids, parse_bool, parse_number_list, parse_runtime_mode};
     use crate::runtime::RuntimeMode;
 
     #[test]
@@ -466,6 +527,16 @@ mod tests {
         assert_eq!(parse_bool("0").ok(), Some(false));
         assert_eq!(parse_bool("off").ok(), Some(false));
         assert!(parse_bool("maybe").is_err());
+    }
+
+    #[test]
+    fn parse_number_list_accepts_csv_and_none() {
+        assert_eq!(parse_number_list::<u32>("3, 1", "K").unwrap(), vec![3, 1]);
+        assert_eq!(
+            parse_number_list::<u8>("none", "K").unwrap(),
+            Vec::<u8>::new()
+        );
+        assert!(parse_number_list::<u8>("90,abc", "K").is_err());
     }
 
     #[test]

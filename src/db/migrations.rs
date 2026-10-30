@@ -128,6 +128,21 @@ impl Db {
         .await
         .map_err(|e| anyhow::anyhow!("Миграция user_groups: {}", e))?;
 
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS user_notifications (
+                tg_user_id INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                sent_at INTEGER NOT NULL,
+                PRIMARY KEY (tg_user_id, kind, scope)
+            );
+            "#,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| anyhow::anyhow!("Миграция user_notifications: {}", e))?;
+
         Ok(())
     }
 

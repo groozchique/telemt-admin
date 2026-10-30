@@ -172,6 +172,15 @@ pub fn telemt_username(tg_user_id: i64) -> String {
     format!("tg_{}", tg_user_id)
 }
 
+/// `tg_<id>` → `id`.
+pub fn tg_id_from_telemt_username(username: &str) -> Option<i64> {
+    let digits = username.strip_prefix("tg_")?;
+    let canonical = !digits.is_empty()
+        && !digits.starts_with('0')
+        && digits.bytes().all(|b| b.is_ascii_digit());
+    canonical.then(|| digits.parse().ok()).flatten()
+}
+
 pub fn sender_user_id(msg: &Message) -> Option<i64> {
     msg.from.as_ref().map(|user| user.id.0 as i64)
 }

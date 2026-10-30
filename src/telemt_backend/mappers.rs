@@ -1,7 +1,7 @@
 use super::api_dto::{ApiUserInfo, RuntimeConnectionUserData, UserLinks};
 use super::types::{
     TelemtBackendMode, TelemtConnectionTopUser, TelemtConnectionsSummary, TelemtUserActivity,
-    TelemtUserInfo,
+    TelemtUserInfo, TelemtUserLimits,
 };
 
 pub(super) fn pick_best_link(links: &UserLinks) -> Option<String> {
@@ -57,6 +57,18 @@ pub(crate) fn map_user_activity(users: Vec<ApiUserInfo>) -> Vec<TelemtUserActivi
             username: u.username,
             current_connections: u.current_connections,
             active_unique_ips: u.active_unique_ips,
+            total_octets: u.total_octets,
+        })
+        .collect()
+}
+
+pub(crate) fn map_user_limits(users: Vec<ApiUserInfo>) -> Vec<TelemtUserLimits> {
+    users
+        .into_iter()
+        .map(|u| TelemtUserLimits {
+            username: u.username,
+            expiration_rfc3339: u.expiration_rfc3339,
+            data_quota_bytes: u.data_quota_bytes,
             total_octets: u.total_octets,
         })
         .collect()

@@ -187,13 +187,45 @@ async fn send_existing_user_link_message(
     secret: &str,
 ) -> HandlerResult {
     let secret_opt = (!secret.is_empty()).then_some(secret);
-    let link = state
-        .telemt_backend
-        .build_user_link(telemt_user, secret_opt)
-        .await?;
-    bot.send_message(chat_id, state.config.user_link_message(&link))
-        .await?;
+    // Ссылка и срок с трафиком — независимые запросы к telemt.
+    let (link, status) = tokio::join!(
+        state
+            .telemt_backend
+            .build_user_link(telemt_user, secret_opt),
+        access_status_lines(state, telemt_user, secret_opt),
+    );
+    let mut text = state.config.user_link_message(&link?);
+    if let Some(status) = status {
+        text = format!("{text}\n\n{status}");
+    }
+    bot.send_message(chat_id, text).await?;
     Ok(())
+}
+
+/// Срок и трафик пользователя для сообщения со ссылкой; без данных из telemt — `None`.
+async fn access_status_lines(
+    state: &BotState,
+    telemt_user: &str,
+    secret: Option<&str>,
+) -> Option<String> {
+    match state
+        .telemt_backend
+        .get_user_info(telemt_user, secret)
+        .await
+    {
+        Ok(info) => info.and_then(|info| {
+            crate::user_notifications::AccessLimits::from_user_info(&info)
+                .status_lines(chrono::Utc::now())
+        }),
+        Err(error) => {
+            tracing::debug!(
+                telemt_user = %telemt_user,
+                error = %error,
+                "Failed to fetch expiry and traffic for the link message"
+            );
+            None
+        }
+    }
 }
 
 /// Сериализует одобрения: бот и Mini App работают в одном процессе, и без блокировки
@@ -495,7 +527,12 @@ pub async fn send_user_link(
     Ok(())
 }
 
-pub async fn perform_hard_ban(state: &BotState, tg_user_id: i64) -> Result<String, anyhow::Error> {
+/// Удаляет доступ пользователя и сообщает ему об этом.
+pub async fn perform_hard_ban(
+    bot: &Bot,
+    state: &BotState,
+    tg_user_id: i64,
+) -> Result<String, anyhow::Error> {
     let telemt_user = telemt_username(tg_user_id);
     state.db.set_user_group_membership(tg_user_id, None).await?;
     let delete_result = state.telemt_backend.delete_user(&telemt_user).await?;
@@ -505,8 +542,21 @@ pub async fn perform_hard_ban(state: &BotState, tg_user_id: i64) -> Result<Strin
         .await?;
 
     if delete_result.removed || removed_from_db {
+        notify_user_access_revoked(bot, state, tg_user_id).await;
         Ok(format!("Пользователь {} удалён", telemt_user))
     } else {
         Ok(format!("Пользователь {} не найден", telemt_user))
+    }
+}
+
+/// Ошибка доставки (например, пользователь заблокировал бота) не отменяет удаление.
+async fn notify_user_access_revoked(bot: &Bot, state: &BotState, tg_user_id: i64) {
+    let text = state.config.bot_messages.access_revoked_or_default();
+    if let Err(error) = bot.send_message(ChatId(tg_user_id), text).await {
+        tracing::warn!(
+            tg_user_id,
+            error = %error,
+            "Failed to notify user about revoked access"
+        );
     }
 }

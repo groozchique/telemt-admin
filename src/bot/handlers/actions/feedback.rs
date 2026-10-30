@@ -9,7 +9,6 @@ use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::bot::handlers::shared::HandlerResult;
-
 use crate::bot::handlers::state::{
     BotState, WizardState, clear_wizard_state, sender_display_name, set_wizard_state,
 };
@@ -182,6 +181,59 @@ pub async fn send_user_feedback(
         bot.send_message(msg.chat.id, text).await?;
     }
     Ok(())
+}
+
+/// Передаёт администраторам текст обратной связи из Mini App: заголовок с кнопкой
+/// «Ответить» и сам текст ответом на него. Возвращает число админов, получивших сообщение,
+/// или `Err` со временем ожидания в секундах, если пауза между сообщениями не прошла.
+pub async fn send_text_feedback(
+    bot: &Bot,
+    state: &BotState,
+    user_id: i64,
+    username: Option<&str>,
+    display_name: Option<&str>,
+    text: &str,
+) -> Result<usize, u64> {
+    claim_feedback_slot(user_id)?;
+    let header = state
+        .config
+        .bot_messages
+        .admin_feedback_text(user_id, username, display_name);
+    let keyboard = crate::bot::keyboards::feedback_reply_keyboard(user_id);
+
+    let mut delivered = 0usize;
+    for admin_id in &state.config.admin_ids {
+        let chat = ChatId(*admin_id);
+        let result = async {
+            let header_msg = bot
+                .send_message(chat, header.as_str())
+                .reply_markup(keyboard.clone())
+                .await?;
+            bot.send_message(chat, text)
+                .reply_parameters(ReplyParameters::new(header_msg.id))
+                .await?;
+            Ok::<(), teloxide::RequestError>(())
+        }
+        .await;
+        match result {
+            Ok(()) => delivered += 1,
+            Err(error) => tracing::warn!(
+                admin_id = *admin_id,
+                user_id = user_id,
+                error = %error,
+                "Failed to deliver Mini App feedback to admin"
+            ),
+        }
+    }
+    tracing::info!(
+        user_id = user_id,
+        delivered = delivered,
+        "Mini App feedback forwarded to admins"
+    );
+    if delivered == 0 {
+        release_feedback_slot(user_id);
+    }
+    Ok(delivered)
 }
 
 /// Доставляет ответ администратора пользователю с кнопкой продолжить переписку.

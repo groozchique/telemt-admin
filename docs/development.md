@@ -36,13 +36,17 @@ CI/CD:
 - если меняются архитектурные границы или модульная структура, синхронно обновлять `docs/*` и `AGENTS.md` в той же серии изменений;
 - если меняются инварианты интеграции с `telemt`, стратегия fallback, rollout или security-модель, обновлять соответствующий ADR в `docs/adr/` или добавлять новый;
 - если меняется эксплуатационное поведение control API, синхронно обновлять `docs/runbook.md`;
-- если меняются notifications, health/runtime alerts или фоновый polling, синхронно обновлять `README.md`, `docs/overview.md`, `docs/architecture.md` и `docs/runbook.md`;
+- если меняются notifications, health/runtime alerts или фоновый polling, синхронно обновлять `docs/configuration.md`, `docs/overview.md`, `docs/architecture.md` и `docs/runbook.md`;
 - при изменениях bot UX проверять вручную wizard-flow, основные inline-экраны и восстановление wizard-state после рестарта.
 - unit-тесты в первую очередь писать для чистых helper-функций, мапперов, парсеров callback payload и форматирования; integration-тесты — для SQLite-слоя и миграций.
 - если меняются `telemt_cfg`, legacy fallback или self-update, синхронно проверять, что блокирующий файловый I/O остаётся вынесенным из async executor и что ограничения по atomic write/offload отражены в docs.
 
 Навигация по документации:
 
+- `docs/installation.md` — установка, обновление, сборка и CLI;
+- `docs/configuration.md` — справочник по `telemt-admin.toml` и `TELEMT_ADMIN__*`;
+- `docs/usage.md` — сценарии пользователя, Mini App и админки;
+- `docs/troubleshooting.md` — частые ошибки;
 - `docs/overview.md` — краткая целевая модель проекта;
 - `docs/architecture.md` — модули и границы слоёв;
 - `docs/adr/README.md` — индекс архитектурных решений;

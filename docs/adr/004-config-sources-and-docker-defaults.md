@@ -65,7 +65,7 @@
 - `WEBAPP__LISTEN` (в контейнере — `0.0.0.0:8090` за reverse proxy)
 - `WEBAPP__PUBLIC_URL`
 
-Расширение whitelist — отдельное изменение с обновлением ADR и README.
+Расширение whitelist — отдельное изменение с обновлением ADR и `docs/configuration.md`.
 
 ## Последствия
 

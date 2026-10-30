@@ -2,7 +2,7 @@
 
 Persistent rules for AI agents working on `telemt-admin` — a Telegram bot (plus Telegram Mini App) that manages access to the `telemt` MTProto proxy.
 
-Read as needed: `docs/overview.md` (invariants), `docs/architecture.md` (module map), `docs/development.md` (CI, conventions, which docs to update), `docs/adr/` (decisions), `docs/runbook.md` (operations).
+Read as needed: `docs/configuration.md` (config reference), `docs/usage.md` (bot/Mini App scenarios), `docs/overview.md` (invariants), `docs/architecture.md` (module map), `docs/development.md` (CI, conventions, which docs to update), `docs/adr/` (decisions), `docs/runbook.md` (operations).
 
 ## Working rules
 
@@ -43,7 +43,7 @@ cargo clippy --all-targets -- -D warnings
 
 ## Adding a config option
 
-Touch all of: `src/config.rs` (field, default, validation) → whitelist in `src/env_config_overlay.rs` if it should be overridable via `TELEMT_ADMIN__*` → `deploy/docker/telemt-admin.docker.toml.example` → config section of `README.md` → ADR 004 if config sources change. Editable bot texts belong in `[bot_messages]`, not in code. Only expose settings an operator would actually tune.
+Touch all of: `src/config.rs` (field, default, validation) → whitelist in `src/env_config_overlay.rs` if it should be overridable via `TELEMT_ADMIN__*` → `deploy/docker/telemt-admin.docker.toml.example` → `docs/configuration.md` → ADR 004 if config sources change. Editable bot texts belong in `[bot_messages]`, not in code. Only expose settings an operator would actually tune.
 
 ## Bot UX and callbacks
 

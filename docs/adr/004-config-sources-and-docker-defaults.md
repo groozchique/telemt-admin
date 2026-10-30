@@ -64,6 +64,7 @@
 - `WEBAPP__ENABLED`
 - `WEBAPP__LISTEN` (в контейнере — `0.0.0.0:8090` за reverse proxy)
 - `WEBAPP__PUBLIC_URL`
+- `BOT_MESSAGES__<ПОЛЕ>` для текстов `[bot_messages]`, кроме `feedback_prompt`, `feedback_sent`, `feedback_reply_header`, `admin_feedback_template` и `donation_text` (полный список — `src/env_config_overlay.rs`)
 
 Расширение whitelist — отдельное изменение с обновлением ADR и `docs/configuration.md`.
 

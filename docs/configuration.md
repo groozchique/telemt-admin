@@ -23,7 +23,7 @@
   - `secret_mode` — `dd` (по умолчанию) или `plain`; должен совпадать с `secret_mode` профиля в `[[web.vhosts.profiles]]` `telemt`.
   - `base_path` — `[[web.vhosts]].base_path` vhost `telemt`, например `chill` или `telegram/web` (без крайних `/`). Если задан, бот выдаёт path-ссылку в формате `telemt`: `server=<host>%2F<base_path>`, секрет — base64url от `0x70 || [0xdd] || secret`. Пусто — root-ссылка с hex-секретом. Некорректное значение отключает WEB-ссылки (предупреждение в логе при старте).
   - `link_scheme` — вид ссылки: `tg` (по умолчанию, `tg://webproxy?…`) или `https` (`https://t.me/webproxy?…`).
-  - `manage_profiles` — `true`: при одобрении бот сам добавляет пользователю профиль в `[[web.vhosts.profiles]]` через control API (`PATCH /v1/config`) и сразу делает reload `telemt` (по умолчанию `false`; нужен `telemt_api.enabled`). Подробности — [ADR 006](adr/006-web-profiles-management.md).
+  - `manage_profiles` — `true`: при одобрении бот сам добавляет пользователю профиль в `[[web.vhosts.profiles]]` через control API (`PATCH /v1/config`) и сразу делает reload `telemt`, а при запуске добавляет профили уже существующим пользователям `tg_*` (по умолчанию `false`; нужен `telemt_api.enabled`). Подробности — [ADR 006](adr/006-web-profiles-management.md).
   - `reload_drain_secs` — сколько секунд старые сессии `telemt` доживают при таком reload (drain), от 1 до 3600 (по умолчанию 300); затем они закрываются и клиенты переподключаются.
   - Перед удалением пользователя бот всегда убирает его WEB-профили: иначе `telemt` отклоняет удаление.
   - Без `manage_profiles` бот **не** создаёт WEB-профили в `telemt`: без профиля у пользователя WEB-ссылка не заработает.
@@ -63,6 +63,8 @@
   - `feedback_sent` — подтверждение пользователю, что сообщение передано администратору.
   - `feedback_reply_header` — заголовок перед ответом администратора.
   - `admin_feedback_template` — заголовок сообщения обратной связи у админов; поддерживает `{user_id}`, `{username}`, `{display_name}`.
+  - Остальные тексты (главные экраны, справка, ошибки токенов, шаблоны уведомлений и т.д.) перечислены в [runbook](runbook.md#группы-рассылка-импорт-и-тексты-бота) и в `deploy/docker/telemt-admin.docker.toml.example`.
+  - Через `TELEMT_ADMIN__BOT_MESSAGES__*` переопределяются не все тексты: `feedback_*`, `admin_feedback_template` и `donation_text` задаются только в TOML.
   - `donation_text` — текст по кнопке «💝 Пожертвование» (реквизиты, ссылки). Пусто — кнопка не показывается. Для многострочного текста используйте `"""…"""`; после изменения перезапустите бота.
 
 ## Переменные окружения `TELEMT_ADMIN__*` (overlay)

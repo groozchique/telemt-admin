@@ -133,7 +133,7 @@ pub enum WebLinkScheme {
 /// Максимальная длина `base_path` WEB-vhost в telemt (ASCII-байты).
 const WEB_BASE_PATH_MAX_LEN: usize = 128;
 
-/// Настройки выдачи WEB-ссылок. Профили `[[web.vhosts.profiles]]` в telemt бот не создаёт.
+/// Настройки выдачи WEB-ссылок; профили `[[web.vhosts.profiles]]` бот создаёт только при `manage_profiles`.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct WebProxyConfig {
     /// Публичный hostname WEB-прокси (FQDN без схемы, порта и пути); пусто — WEB-ссылки не выдаются

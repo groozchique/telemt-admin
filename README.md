@@ -19,9 +19,9 @@
 
 - WEB-прокси с `base_path`. Если WEB-прокси стоит не в корне vhost, задайте `[web_proxy] base_path`: бот выдаст path-ссылку в формате `telemt` (`server=<host>%2F<base_path>`, секрет в base64url).
 - Вид WEB-ссылки: `[web_proxy] link_scheme = "tg" | "https"` выбирает между `tg://webproxy?…` и `https://t.me/webproxy?…`.
-- Автоматические WEB-профили. С `[web_proxy] manage_profiles = true` бот при одобрении сам добавляет пользователю профиль в `[[web.vhosts.profiles]]` через control API и делает reload `telemt` с drain (`reload_drain_secs`). Перед удалением пользователя профили снимаются всегда, иначе `telemt` отклоняет удаление. Подробности в [ADR 006](docs/adr/006-web-profiles-management.md).
-- Обратная связь. У пользователя в боте и в Mini App есть кнопка «Обратная связь». Его сообщение (текст, медиа, альбом) копируется всем `admin_ids` с кнопкой «↩️ Ответить», ответ приходит пользователю от имени бота. Тексты задаются в `[bot_messages]`: `feedback_*` и `admin_feedback_template`.
-- Пожертвования: кнопка «💝 Пожертвование» показывает текст из `[bot_messages] donation_text`. Если текст не задан, кнопки нет.
+- Автоматические WEB-профили. С `[web_proxy] manage_profiles = true` бот при одобрении сам добавляет пользователю профиль в `[[web.vhosts.profiles]]` через control API и делает reload `telemt` с drain (`reload_drain_secs`). При запуске бот добавляет профили пользователям, у которых их нет. Перед удалением пользователя профили снимаются всегда, иначе `telemt` отклоняет удаление; если удаление не прошло, профиль возвращается. Подробности в [ADR 006](docs/adr/006-web-profiles-management.md).
+- Обратная связь. На главном экране пользователя в боте есть кнопка «✉️ Обратная связь» (в Mini App её нет). Сообщение пользователя (текст, медиа, альбом) копируется всем `admin_ids` с кнопкой «↩️ Ответить», ответ приходит пользователю от имени бота. Тексты задаются в `[bot_messages]`: `feedback_*` и `admin_feedback_template`.
+- Пожертвования: кнопка «💝 Пожертвование» на главном экране пользователя в боте показывает текст из `[bot_messages] donation_text`. Если текст не задан, кнопки нет.
 
 ## Возможности
 
@@ -43,7 +43,7 @@ curl -fsSL https://raw.githubusercontent.com/fgbm/telemt-admin/master/scripts/in
 Docker, ручная установка, проверка после запуска и обновление описаны в [docs/installation.md](docs/installation.md).
 
 > [!NOTE]
-> Скрипт установки и Docker-образ `ghcr.io/fgbm/telemt-admin` берутся из upstream, функций форка в них нет. Чтобы их получить, соберите бинарник из этого репозитория: `cargo build --release` (см. [Сборка из исходников](docs/installation.md#сборка-из-исходников)).
+> Скрипт установки и Docker-образ `ghcr.io/fgbm/telemt-admin` берутся из upstream, функций форка в них нет. Чтобы их получить, соберите бинарник из этого репозитория: `cargo build --release` (см. [Сборка из исходников](docs/installation.md#сборка-из-исходников)). `telemt-admin self-update` тоже скачивает релиз upstream и заменит сборку форка на версию без его функций.
 
 ## Документация
 
